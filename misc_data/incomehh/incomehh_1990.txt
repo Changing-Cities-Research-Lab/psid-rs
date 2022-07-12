@@ -1,0 +1,117 @@
+--------------------------------------------------------------------------------
+Codebook for Social Explorer report ID: R13153563
+--------------------------------------------------------------------------------
+
+Contents
+    - Table Summary
+    - Data Dictionary
+    - Citation and Use
+
+
+--------------------------------------------------------------------------------
+Table Summary
+--------------------------------------------------------------------------------
+ 
+Survey:           Census 1990 on 2010 Geographies
+Dataset:          Social Explorer Tables
+Tables:
+
+      1. Household Income In <DollarYear> Dollars
+         Universe:  Households
+         Name:      T41
+         Variables:
+            T041_001:   Households:
+            T041_002:      Less than $5,000
+            T041_003:      $5,000 to $9,999
+            T041_004:      $10,000 to $12,499
+            T041_005:      $12,500 to $14,999
+            T041_006:      $15,000 to $17,499
+            T041_007:      $17,500 to $19,999
+            T041_008:      $20,000 to $22,499
+            T041_009:      $22,500 to $24,999
+            T041_010:      $25,000 to $27,499
+            T041_011:      $27,500 to $29,999
+            T041_012:      $30,000 to $32,499
+            T041_013:      $32,500 to $34,999
+            T041_014:      $35,000 to $37,499
+            T041_015:      $37,500 to $39,999
+            T041_016:      $40,000 to $42,499
+            T041_017:      $42,500 to $44,999
+            T041_018:      $45,000 to $47,499
+            T041_019:      $47,500 to $49,999
+            T041_020:      $50,000 to $54,999
+            T041_021:      $55,000 to $59,999
+            T041_022:      $60,000 to $74,999
+            T041_023:      $75,000 to $99,999
+            T041_024:      $100,000 to $124,999
+            T041_025:      $125,000 to $149,999
+            T041_026:      $150,000 or more
+
+
+
+
+
+ 
+ 
+ 
+--------------------------------------------------------------------------------
+Data Dictionary
+--------------------------------------------------------------------------------
+ 
+Variables 
+      FIPS:           FIPS
+      NAME:           Name of Area
+      QName:          Qualifying Name
+      NATION:         Nation
+      STATE:          State
+      COUNTY:         County
+      CT:             Census Tract
+      T041_001:       Households
+      T041_002:       Households: Less than $5,000
+      T041_003:       Households: $5,000 to $9,999
+      T041_004:       Households: $10,000 to $12,499
+      T041_005:       Households: $12,500 to $14,999
+      T041_006:       Households: $15,000 to $17,499
+      T041_007:       Households: $17,500 to $19,999
+      T041_008:       Households: $20,000 to $22,499
+      T041_009:       Households: $22,500 to $24,999
+      T041_010:       Households: $25,000 to $27,499
+      T041_011:       Households: $27,500 to $29,999
+      T041_012:       Households: $30,000 to $32,499
+      T041_013:       Households: $32,500 to $34,999
+      T041_014:       Households: $35,000 to $37,499
+      T041_015:       Households: $37,500 to $39,999
+      T041_016:       Households: $40,000 to $42,499
+      T041_017:       Households: $42,500 to $44,999
+      T041_018:       Households: $45,000 to $47,499
+      T041_019:       Households: $47,500 to $49,999
+      T041_020:       Households: $50,000 to $54,999
+      T041_021:       Households: $55,000 to $59,999
+      T041_022:       Households: $60,000 to $74,999
+      T041_023:       Households: $75,000 to $99,999
+      T041_024:       Households: $100,000 to $124,999
+      T041_025:       Households: $125,000 to $149,999
+      T041_026:       Households: $150,000 or more
+
+
+
+
+--------------------------------------------------------------------------------
+Citation and Use of Data
+--------------------------------------------------------------------------------
+ 
+All persons are granted a limited license to use this documentation and the
+accompanying data, subject to the following conditions:
+
+* Publications and research reports employing the data
+  must cite it appropriately. The citation should include the following:
+
+	  www.socialexplorer.com
+	  New York City, NY: Social Explorer 2022
+
+
+* Citations should also include the URL for this report:
+
+    http://www.socialexplorer.com/pub/reportdata/HtmlResults.aspx?reportid=R13153563
+
+If you have any questions contact info@socialexplorer.com
