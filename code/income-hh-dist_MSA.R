@@ -9,7 +9,7 @@
 
 # Script Description ------------------------------------------------------
 
-# This script cleans and processes tract-level ACS data downloaded from SE. 
+# This script cleans and processes tract-level ACS data downloaded from SE in order to generate the income-by-household distribution. 
 # First, I adjust the values for inflation (2019 Jan 1 dollars) and find the midpoint of each income category. 
 # Second, I aggregate up to the metdiv, to get the total # of households in each income category, but also the metdiv-level aggregate # of households. 
 # Third, I get the metdiv-specific income cutoffs for each year 
