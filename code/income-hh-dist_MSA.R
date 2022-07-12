@@ -39,6 +39,7 @@
 
 # Packages: 
 library("tidyverse") 
+install.packages("readr")
 library("readr") 
 
 # I like using the %<>% from magrittr; `x %<>% mutate` is equivalent to `x <- x %>% mutate` 
@@ -193,3 +194,989 @@ write_csv(metdiv1990, "cleaned/metdiv1990.csv")
 rm(income_agg, income1990, metdiv1990, na_metdiv)
 
 # Andrew completes this series for 2000, 2010 (08-12 file), 2011 (09-13 file) etc. until 2017 (15-19 file) ----
+# 2000 ####
+# read in the data: x <- read_csv("data")
+income2000 <- read_csv("incomehh/incomehh_2000.csv") 
+
+# get the 5-digit unique county identifier and find their metdivs by merging with the crosswalk cw file
+# %<>% means "to this data, do the following:" 
+# mutate is how you create or modify a new variable. We're making a new variable called stcou 
+# left_join is how we merge two datasets; by = the variable in common across two datasets. left_join retains all observations from the left. 
+income2000 %<>%
+  mutate(stcou = paste0(Geo_STATE, Geo_COUNTY)) %>%
+  left_join(cw, by = "stcou")
+
+# rename the variables. Normally, it's not allowed to name a variable starting with numbers (or to have a mathematical operation sign in the name, like -+/*), but here we do this for other reasons. We put those variable names in `` to tell R that this disallowed naming convention is intentional 
+# rename follows logic new name = old name
+# look at the codebook to find out which income category corresponds to which. These may not be the same across years, so you may have to add more. 
+# We pick the mid-point for each category, so less than 10,000 (0 to 10,000) is assigned 5000, 10,000 to 15,000 is assigned 12,500. I top-code the more than 200,000 category to be 225,000 since the midpoints seem to increase in increments of multiples of 2250's 
+# if ever you get lost for what the midpoint is, try this: value_1 + (value_2 rounded up - value_1)/2, for example for the 5000 to 9999 category 
+5000 + (10000 - 5000)/2
+# look at the codebook named the same as the dataset (.txt) to find out the categories. Notice that even though these are not named like this in the codebook, the variable names all have the SE_ prefix.
+# I would literally copy and paste the codebook and manually edit them into this format:
+income2000 %<>%
+  rename(n_hh = SE_T090_001,
+         `5000` = SE_T090_002,
+         `12500` = SE_T090_003,
+         `17500` = SE_T090_004,
+         `22500` = SE_T090_005,
+         `27500` = SE_T090_006,
+         `32500` = SE_T090_007,
+         `37500` = SE_T090_008,
+         `42500` = SE_T090_009, 
+         `47500` = SE_T090_010, 
+         `55000` = SE_T090_011, 
+         `67500` = SE_T090_012,
+         `87500` = SE_T090_013,
+         `112500` = SE_T090_014, 
+         `137500` = SE_T090_015, 
+         `175000` = SE_T090_016, 
+         `225000` = SE_T090_017 
+  )
+
+# pivot longer such that there's a income_cat variable, count variable, stcou, and metdiv variable 
+# this part is a bit hard to understand. For following years, the only thing you need to make sure you edit is the starting variable and ending variable that bookend the colon :
+# and make you sure change what's in the [[]] for cpi to match the current year
+income2000 %<>%
+  rename(trtid10 = Geo_FIPS) %>%
+  select(trtid10, metdiv, `5000`:`225000`) %>%
+  pivot_longer(cols = c(`5000`:`225000`),
+               names_to = "income_cat", 
+               values_to = "count") %>%
+  mutate(income_cat_inf = as.numeric(income_cat)*cpi[["2000"]], 
+         count = ifelse(is.na(count), 0, count))
+
+# aggregate counts of the metdiv households so that we can get distribution
+income_agg <- income2000 %>%
+  group_by(metdiv) %>%
+  dplyr::summarize(n_hh = sum(count, na.rm = T), 
+                   hh_1 = round(n_hh * 0.25, 0), 
+                   hh_2 = round(n_hh * 0.5, 0), 
+                   hh_3 = round(n_hh * 0.75, 0)) %>%
+  ungroup() 
+
+# get cumulative distribution (imagine lining every household up and assigning them a number; we're trying to find the number that corresponds to 25%, 50%, 75%)
+income2000 <- income2000 %>%
+  group_by(metdiv) %>%
+  arrange(metdiv, income_cat_inf) %>%
+  mutate(cum_hh_count = cumsum(count)) %>%
+  left_join(income_agg, by = "metdiv") %>%
+  mutate(income_1st = ifelse(cum_hh_count <= hh_1, 1, 0),
+         income_2nd = ifelse(cum_hh_count > hh_1 & cum_hh_count <= hh_2, 1, 0),
+         income_3rd = ifelse(cum_hh_count > hh_2 & cum_hh_count <= hh_3, 1, 0),
+         income_4th = ifelse(cum_hh_count > hh_3, 1, 0)) %>%
+  ungroup()
+
+# have to do something different with metdivs where there are 0 households
+na_metdiv <- income_agg %>% 
+  filter(n_hh == 0)
+
+# get the income value at the Xth spot of the distribution
+income2000 <- income2000 %>%
+  filter(!metdiv %in% na_metdiv$metdiv & !is.na(metdiv)) %>%
+  group_by(metdiv) %>%
+  dplyr::summarize(inc_1 = ifelse(income_1st==1, income_cat_inf, NA),
+                   inc_2 = ifelse(income_2nd==1, income_cat_inf, NA),
+                   inc_3 = ifelse(income_3rd==1, income_cat_inf, NA),
+                   inc_4 = ifelse(income_4th==1, income_cat_inf, NA)) %>% 
+  group_by(metdiv) %>%
+  dplyr::summarize(inc_1 = max(inc_1, na.rm = T),
+                   inc_2 = max(inc_2, na.rm = T), 
+                   inc_3 = max(inc_3, na.rm = T),
+                   inc_4 = max(inc_4, na.rm = T)) 
+
+na_metdiv %<>%
+  mutate(inc_1 = NA,
+         inc_2 = NA, 
+         inc_3 = NA, 
+         inc_4 = NA) %>%
+  select(metdiv, inc_1:inc_4)
+
+metdiv2000 <- base::rbind(income2000, na_metdiv)
+
+# here's another way to assign things to variables
+metdiv2000$Year <- 2000
+
+# here's how we save files 
+write_csv(metdiv2000, "cleaned/metdiv2000.csv")
+
+# remove things we don't need (we still need the crosswalk file so we don't have to load it every time. We need the cpi vector)
+rm(income_agg, income2000, metdiv2000, na_metdiv)
+
+# read in the data: x <- read_csv("data")
+# 2010 ####
+income2010 <- read_csv("incomehh/incomehh_0812.csv") 
+
+# get the 5-digit unique county identifier and find their metdivs by merging with the crosswalk cw file
+# %<>% means "to this data, do the following:" 
+# mutate is how you create or modify a new variable. We're making a new variable called stcou 
+# left_join is how we merge two datasets; by = the variable in common across two datasets. left_join retains all observations from the left. 
+income2010 %<>%
+  mutate(stcou = paste0(Geo_STATE, Geo_COUNTY)) %>%
+  left_join(cw, by = "stcou")
+
+# rename the variables. Normally, it's not allowed to name a variable starting with numbers (or to have a mathematical operation sign in the name, like -+/*), but here we do this for other reasons. We put those variable names in `` to tell R that this disallowed naming convention is intentional 
+# rename follows logic new name = old name
+# look at the codebook to find out which income category corresponds to which. These may not be the same across years, so you may have to add more. 
+# We pick the mid-point for each category, so less than 10,000 (0 to 10,000) is assigned 5000, 10,000 to 15,000 is assigned 12,500. I top-code the more than 200,000 category to be 225,000 since the midpoints seem to increase in increments of multiples of 2250's 
+# if ever you get lost for what the midpoint is, try this: value_1 + (value_2 rounded up - value_1)/2, for example for the 5000 to 9999 category 
+5000 + (10000 - 5000)/2
+# look at the codebook named the same as the dataset (.txt) to find out the categories. Notice that even though these are not named like this in the codebook, the variable names all have the SE_ prefix.
+# I would literally copy and paste the codebook and manually edit them into this format:
+income2010 %<>%
+  rename(n_hh = SE_A14001_001,
+         `5000` = SE_A14001_002,
+         `12500` = SE_A14001_003,
+         `17500` = SE_A14001_004,
+         `22500` = SE_A14001_005,
+         `27500` = SE_A14001_006,
+         `32500` = SE_A14001_007,
+         `37500` = SE_A14001_008,
+         `42500` = SE_A14001_009, 
+         `47500` = SE_A14001_010, 
+         `55000` = SE_A14001_011, 
+         `67500` = SE_A14001_012,
+         `87500` = SE_A14001_013,
+         `112500` = SE_A14001_014, 
+         `137500` = SE_A14001_015, 
+         `175000` = SE_A14001_016, 
+         `225000` = SE_A14001_017
+  )
+
+# pivot longer such that there's a income_cat variable, count variable, stcou, and metdiv variable 
+# this part is a bit hard to understand. For following years, the only thing you need to make sure you edit is the starting variable and ending variable that bookend the colon :
+# and make you sure change what's in the [[]] for cpi to match the current year
+income2010 %<>%
+  rename(trtid10 = Geo_FIPS) %>%
+  select(trtid10, metdiv, `5000`:`225000`) %>%
+  pivot_longer(cols = c(`5000`:`225000`),
+               names_to = "income_cat", 
+               values_to = "count") %>%
+  mutate(income_cat_inf = as.numeric(income_cat)*cpi[["2010"]], 
+         count = ifelse(is.na(count), 0, count))
+
+# aggregate counts of the metdiv households so that we can get distribution
+income_agg <- income2010 %>%
+  group_by(metdiv) %>%
+  dplyr::summarize(n_hh = sum(count, na.rm = T), 
+                   hh_1 = round(n_hh * 0.25, 0), 
+                   hh_2 = round(n_hh * 0.5, 0), 
+                   hh_3 = round(n_hh * 0.75, 0)) %>%
+  ungroup() 
+
+# get cumulative distribution (imagine lining every household up and assigning them a number; we're trying to find the number that corresponds to 25%, 50%, 75%)
+income2010 <- income2010 %>%
+  group_by(metdiv) %>%
+  arrange(metdiv, income_cat_inf) %>%
+  mutate(cum_hh_count = cumsum(count)) %>%
+  left_join(income_agg, by = "metdiv") %>%
+  mutate(income_1st = ifelse(cum_hh_count <= hh_1, 1, 0),
+         income_2nd = ifelse(cum_hh_count > hh_1 & cum_hh_count <= hh_2, 1, 0),
+         income_3rd = ifelse(cum_hh_count > hh_2 & cum_hh_count <= hh_3, 1, 0),
+         income_4th = ifelse(cum_hh_count > hh_3, 1, 0)) %>%
+  ungroup()
+
+# have to do something different with metdivs where there are 0 households
+na_metdiv <- income_agg %>% 
+  filter(n_hh == 0)
+
+# get the income value at the Xth spot of the distribution
+income2010 <- income2010 %>%
+  filter(!metdiv %in% na_metdiv$metdiv & !is.na(metdiv)) %>%
+  group_by(metdiv) %>%
+  dplyr::summarize(inc_1 = ifelse(income_1st==1, income_cat_inf, NA),
+                   inc_2 = ifelse(income_2nd==1, income_cat_inf, NA),
+                   inc_3 = ifelse(income_3rd==1, income_cat_inf, NA),
+                   inc_4 = ifelse(income_4th==1, income_cat_inf, NA)) %>% 
+  group_by(metdiv) %>%
+  dplyr::summarize(inc_1 = max(inc_1, na.rm = T),
+                   inc_2 = max(inc_2, na.rm = T), 
+                   inc_3 = max(inc_3, na.rm = T),
+                   inc_4 = max(inc_4, na.rm = T)) 
+
+na_metdiv %<>%
+  mutate(inc_1 = NA,
+         inc_2 = NA, 
+         inc_3 = NA, 
+         inc_4 = NA) %>%
+  select(metdiv, inc_1:inc_4)
+
+metdiv2010 <- base::rbind(income2010, na_metdiv)
+
+# here's another way to assign things to variables
+metdiv2010$Year <- 2010
+
+# here's how we save files 
+write_csv(metdiv2010, "cleaned/metdiv0812.csv")
+
+# remove things we don't need (we still need the crosswalk file so we don't have to load it every time. We need the cpi vector)
+rm(income_agg, income2010, metdiv2010, na_metdiv)
+
+# read in the data: x <- read_csv("data")
+# 2011 ####
+income2011 <- read_csv("incomehh/incomehh_0913.csv") 
+
+# get the 5-digit unique county identifier and find their metdivs by merging with the crosswalk cw file
+# %<>% means "to this data, do the following:" 
+# mutate is how you create or modify a new variable. We're making a new variable called stcou 
+# left_join is how we merge two datasets; by = the variable in common across two datasets. left_join retains all observations from the left. 
+income2011 %<>%
+  mutate(stcou = paste0(Geo_STATE, Geo_COUNTY)) %>%
+  left_join(cw, by = "stcou")
+
+# rename the variables. Normally, it's not allowed to name a variable starting with numbers (or to have a mathematical operation sign in the name, like -+/*), but here we do this for other reasons. We put those variable names in `` to tell R that this disallowed naming convention is intentional 
+# rename follows logic new name = old name
+# look at the codebook to find out which income category corresponds to which. These may not be the same across years, so you may have to add more. 
+# We pick the mid-point for each category, so less than 10,000 (0 to 10,000) is assigned 5000, 10,000 to 15,000 is assigned 12,500. I top-code the more than 200,000 category to be 225,000 since the midpoints seem to increase in increments of multiples of 2250's 
+# if ever you get lost for what the midpoint is, try this: value_1 + (value_2 rounded up - value_1)/2, for example for the 5000 to 9999 category 
+5000 + (10000 - 5000)/2
+# look at the codebook named the same as the dataset (.txt) to find out the categories. Notice that even though these are not named like this in the codebook, the variable names all have the SE_ prefix.
+# I would literally copy and paste the codebook and manually edit them into this format:
+income2011 %<>%
+  rename(n_hh = SE_A14001_001,
+         `5000` = SE_A14001_002,
+         `12500` = SE_A14001_003,
+         `17500` = SE_A14001_004,
+         `22500` = SE_A14001_005,
+         `27500` = SE_A14001_006,
+         `32500` = SE_A14001_007,
+         `37500` = SE_A14001_008,
+         `42500` = SE_A14001_009, 
+         `47500` = SE_A14001_010, 
+         `55000` = SE_A14001_011, 
+         `67500` = SE_A14001_012,
+         `87500` = SE_A14001_013,
+         `112500` = SE_A14001_014, 
+         `137500` = SE_A14001_015, 
+         `175000` = SE_A14001_016, 
+         `225000` = SE_A14001_017 
+         
+  )
+
+# pivot longer such that there's a income_cat variable, count variable, stcou, and metdiv variable 
+# this part is a bit hard to understand. For following years, the only thing you need to make sure you edit is the starting variable and ending variable that bookend the colon :
+# and make you sure change what's in the [[]] for cpi to match the current year
+income2011 %<>%
+  rename(trtid10 = Geo_FIPS) %>%
+  select(trtid10, metdiv, `5000`:`225000`) %>%
+  pivot_longer(cols = c(`5000`:`225000`),
+               names_to = "income_cat", 
+               values_to = "count") %>%
+  mutate(income_cat_inf = as.numeric(income_cat)*cpi[["2011"]], 
+         count = ifelse(is.na(count), 0, count))
+
+# aggregate counts of the metdiv households so that we can get distribution
+income_agg <- income2011 %>%
+  group_by(metdiv) %>%
+  dplyr::summarize(n_hh = sum(count, na.rm = T), 
+                   hh_1 = round(n_hh * 0.25, 0), 
+                   hh_2 = round(n_hh * 0.5, 0), 
+                   hh_3 = round(n_hh * 0.75, 0)) %>%
+  ungroup() 
+
+# get cumulative distribution (imagine lining every household up and assigning them a number; we're trying to find the number that corresponds to 25%, 50%, 75%)
+income2011 <- income2011 %>%
+  group_by(metdiv) %>%
+  arrange(metdiv, income_cat_inf) %>%
+  mutate(cum_hh_count = cumsum(count)) %>%
+  left_join(income_agg, by = "metdiv") %>%
+  mutate(income_1st = ifelse(cum_hh_count <= hh_1, 1, 0),
+         income_2nd = ifelse(cum_hh_count > hh_1 & cum_hh_count <= hh_2, 1, 0),
+         income_3rd = ifelse(cum_hh_count > hh_2 & cum_hh_count <= hh_3, 1, 0),
+         income_4th = ifelse(cum_hh_count > hh_3, 1, 0)) %>%
+  ungroup()
+
+# have to do something different with metdivs where there are 0 households
+na_metdiv <- income_agg %>% 
+  filter(n_hh == 0)
+
+# get the income value at the Xth spot of the distribution
+income2011 <- income2011 %>%
+  filter(!metdiv %in% na_metdiv$metdiv & !is.na(metdiv)) %>%
+  group_by(metdiv) %>%
+  dplyr::summarize(inc_1 = ifelse(income_1st==1, income_cat_inf, NA),
+                   inc_2 = ifelse(income_2nd==1, income_cat_inf, NA),
+                   inc_3 = ifelse(income_3rd==1, income_cat_inf, NA),
+                   inc_4 = ifelse(income_4th==1, income_cat_inf, NA)) %>% 
+  group_by(metdiv) %>%
+  dplyr::summarize(inc_1 = max(inc_1, na.rm = T),
+                   inc_2 = max(inc_2, na.rm = T), 
+                   inc_3 = max(inc_3, na.rm = T),
+                   inc_4 = max(inc_4, na.rm = T)) 
+
+na_metdiv %<>%
+  mutate(inc_1 = NA,
+         inc_2 = NA, 
+         inc_3 = NA, 
+         inc_4 = NA) %>%
+  select(metdiv, inc_1:inc_4)
+
+metdiv2011 <- base::rbind(income2011, na_metdiv)
+
+# here's another way to assign things to variables
+metdiv2011$Year <- 2011
+
+# here's how we save files 
+write_csv(metdiv2011, "cleaned/metdiv0913.csv")
+
+# remove things we don't need (we still need the crosswalk file so we don't have to load it every time. We need the cpi vector)
+rm(income_agg, income2011, metdiv2011, na_metdiv)
+
+# read in the data: x <- read_csv("data")
+# 2012 ####
+income2012 <- read_csv("incomehh/incomehh_1014.csv") 
+
+# get the 5-digit unique county identifier and find their metdivs by merging with the crosswalk cw file
+# %<>% means "to this data, do the following:" 
+# mutate is how you create or modify a new variable. We're making a new variable called stcou 
+# left_join is how we merge two datasets; by = the variable in common across two datasets. left_join retains all observations from the left. 
+income2012 %<>%
+  mutate(stcou = paste0(Geo_STATE, Geo_COUNTY)) %>%
+  left_join(cw, by = "stcou")
+
+# rename the variables. Normally, it's not allowed to name a variable starting with numbers (or to have a mathematical operation sign in the name, like -+/*), but here we do this for other reasons. We put those variable names in `` to tell R that this disallowed naming convention is intentional 
+# rename follows logic new name = old name
+# look at the codebook to find out which income category corresponds to which. These may not be the same across years, so you may have to add more. 
+# We pick the mid-point for each category, so less than 10,000 (0 to 10,000) is assigned 5000, 10,000 to 15,000 is assigned 12,500. I top-code the more than 200,000 category to be 225,000 since the midpoints seem to increase in increments of multiples of 2250's 
+# if ever you get lost for what the midpoint is, try this: value_1 + (value_2 rounded up - value_1)/2, for example for the 5000 to 9999 category 
+5000 + (10000 - 5000)/2
+# look at the codebook named the same as the dataset (.txt) to find out the categories. Notice that even though these are not named like this in the codebook, the variable names all have the SE_ prefix.
+# I would literally copy and paste the codebook and manually edit them into this format:
+income2012 %<>%
+  rename(n_hh = SE_A14001_001,
+         `5000` = SE_A14001_002,
+         `12500` = SE_A14001_003,
+         `17500` = SE_A14001_004,
+         `22500` = SE_A14001_005,
+         `27500` = SE_A14001_006,
+         `32500` = SE_A14001_007,
+         `37500` = SE_A14001_008,
+         `42500` = SE_A14001_009, 
+         `47500` = SE_A14001_010, 
+         `55000` = SE_A14001_011, 
+         `67500` = SE_A14001_012,
+         `87500` = SE_A14001_013,
+         `112500` = SE_A14001_014, 
+         `137500` = SE_A14001_015, 
+         `175000` = SE_A14001_016, 
+         `225000` = SE_A14001_017
+  )
+
+# pivot longer such that there's a income_cat variable, count variable, stcou, and metdiv variable 
+# this part is a bit hard to understand. For following years, the only thing you need to make sure you edit is the starting variable and ending variable that bookend the colon :
+# and make you sure change what's in the [[]] for cpi to match the current year
+income2012 %<>%
+  rename(trtid10 = Geo_FIPS) %>%
+  select(trtid10, metdiv, `5000`:`225000`) %>%
+  pivot_longer(cols = c(`5000`:`225000`),
+               names_to = "income_cat", 
+               values_to = "count") %>%
+  mutate(income_cat_inf = as.numeric(income_cat)*cpi[["2012"]], 
+         count = ifelse(is.na(count), 0, count))
+
+# aggregate counts of the metdiv households so that we can get distribution
+income_agg <- income2012 %>%
+  group_by(metdiv) %>%
+  dplyr::summarize(n_hh = sum(count, na.rm = T), 
+                   hh_1 = round(n_hh * 0.25, 0), 
+                   hh_2 = round(n_hh * 0.5, 0), 
+                   hh_3 = round(n_hh * 0.75, 0)) %>%
+  ungroup() 
+
+# get cumulative distribution (imagine lining every household up and assigning them a number; we're trying to find the number that corresponds to 25%, 50%, 75%)
+income2012 <- income2012 %>%
+  group_by(metdiv) %>%
+  arrange(metdiv, income_cat_inf) %>%
+  mutate(cum_hh_count = cumsum(count)) %>%
+  left_join(income_agg, by = "metdiv") %>%
+  mutate(income_1st = ifelse(cum_hh_count <= hh_1, 1, 0),
+         income_2nd = ifelse(cum_hh_count > hh_1 & cum_hh_count <= hh_2, 1, 0),
+         income_3rd = ifelse(cum_hh_count > hh_2 & cum_hh_count <= hh_3, 1, 0),
+         income_4th = ifelse(cum_hh_count > hh_3, 1, 0)) %>%
+  ungroup()
+
+# have to do something different with metdivs where there are 0 households
+na_metdiv <- income_agg %>% 
+  filter(n_hh == 0)
+
+# get the income value at the Xth spot of the distribution
+income2012 <- income2012 %>%
+  filter(!metdiv %in% na_metdiv$metdiv & !is.na(metdiv)) %>%
+  group_by(metdiv) %>%
+  dplyr::summarize(inc_1 = ifelse(income_1st==1, income_cat_inf, NA),
+                   inc_2 = ifelse(income_2nd==1, income_cat_inf, NA),
+                   inc_3 = ifelse(income_3rd==1, income_cat_inf, NA),
+                   inc_4 = ifelse(income_4th==1, income_cat_inf, NA)) %>% 
+  group_by(metdiv) %>%
+  dplyr::summarize(inc_1 = max(inc_1, na.rm = T),
+                   inc_2 = max(inc_2, na.rm = T), 
+                   inc_3 = max(inc_3, na.rm = T),
+                   inc_4 = max(inc_4, na.rm = T)) 
+
+na_metdiv %<>%
+  mutate(inc_1 = NA,
+         inc_2 = NA, 
+         inc_3 = NA, 
+         inc_4 = NA) %>%
+  select(metdiv, inc_1:inc_4)
+
+metdiv2012 <- base::rbind(income2012, na_metdiv)
+
+# here's another way to assign things to variables
+metdiv2012$Year <- 2012
+
+# here's how we save files 
+write_csv(metdiv2012, "cleaned/metdiv1014.csv")
+
+# remove things we don't need (we still need the crosswalk file so we don't have to load it every time. We need the cpi vector)
+rm(income_agg, income2012, metdiv2012, na_metdiv)
+
+# read in the data: x <- read_csv("data")
+# 2013 ####
+income2013 <- read_csv("incomehh/incomehh_1115.csv") 
+
+# get the 5-digit unique county identifier and find their metdivs by merging with the crosswalk cw file
+# %<>% means "to this data, do the following:" 
+# mutate is how you create or modify a new variable. We're making a new variable called stcou 
+# left_join is how we merge two datasets; by = the variable in common across two datasets. left_join retains all observations from the left. 
+income2013 %<>%
+  mutate(stcou = paste0(Geo_STATE, Geo_COUNTY)) %>%
+  left_join(cw, by = "stcou")
+
+# rename the variables. Normally, it's not allowed to name a variable starting with numbers (or to have a mathematical operation sign in the name, like -+/*), but here we do this for other reasons. We put those variable names in `` to tell R that this disallowed naming convention is intentional 
+# rename follows logic new name = old name
+# look at the codebook to find out which income category corresponds to which. These may not be the same across years, so you may have to add more. 
+# We pick the mid-point for each category, so less than 10,000 (0 to 10,000) is assigned 5000, 10,000 to 15,000 is assigned 12,500. I top-code the more than 200,000 category to be 225,000 since the midpoints seem to increase in increments of multiples of 2250's 
+# if ever you get lost for what the midpoint is, try this: value_1 + (value_2 rounded up - value_1)/2, for example for the 5000 to 9999 category 
+5000 + (10000 - 5000)/2
+# look at the codebook named the same as the dataset (.txt) to find out the categories. Notice that even though these are not named like this in the codebook, the variable names all have the SE_ prefix.
+# I would literally copy and paste the codebook and manually edit them into this format:
+income2013 %<>%
+  rename(n_hh = SE_A14001_001,
+         `5000` = SE_A14001_002,
+         `12500` = SE_A14001_003,
+         `17500` = SE_A14001_004,
+         `22500` = SE_A14001_005,
+         `27500` = SE_A14001_006,
+         `32500` = SE_A14001_007,
+         `37500` = SE_A14001_008,
+         `42500` = SE_A14001_009, 
+         `47500` = SE_A14001_010, 
+         `55000` = SE_A14001_011, 
+         `67500` = SE_A14001_012,
+         `87500` = SE_A14001_013,
+         `112500` = SE_A14001_014, 
+         `137500` = SE_A14001_015, 
+         `175000` = SE_A14001_016, 
+         `225000` = SE_A14001_017 
+  
+  )
+
+# pivot longer such that there's a income_cat variable, count variable, stcou, and metdiv variable 
+# this part is a bit hard to understand. For following years, the only thing you need to make sure you edit is the starting variable and ending variable that bookend the colon :
+# and make you sure change what's in the [[]] for cpi to match the current year
+income2013 %<>%
+  rename(trtid10 = Geo_FIPS) %>%
+  select(trtid10, metdiv, `5000`:`225000`) %>%
+  pivot_longer(cols = c(`5000`:`225000`),
+               names_to = "income_cat", 
+               values_to = "count") %>%
+  mutate(income_cat_inf = as.numeric(income_cat)*cpi[["2013"]], 
+         count = ifelse(is.na(count), 0, count))
+
+# aggregate counts of the metdiv households so that we can get distribution
+income_agg <- income2013 %>%
+  group_by(metdiv) %>%
+  dplyr::summarize(n_hh = sum(count, na.rm = T), 
+                   hh_1 = round(n_hh * 0.25, 0), 
+                   hh_2 = round(n_hh * 0.5, 0), 
+                   hh_3 = round(n_hh * 0.75, 0)) %>%
+  ungroup() 
+
+# get cumulative distribution (imagine lining every household up and assigning them a number; we're trying to find the number that corresponds to 25%, 50%, 75%)
+income2013 <- income2013 %>%
+  group_by(metdiv) %>%
+  arrange(metdiv, income_cat_inf) %>%
+  mutate(cum_hh_count = cumsum(count)) %>%
+  left_join(income_agg, by = "metdiv") %>%
+  mutate(income_1st = ifelse(cum_hh_count <= hh_1, 1, 0),
+         income_2nd = ifelse(cum_hh_count > hh_1 & cum_hh_count <= hh_2, 1, 0),
+         income_3rd = ifelse(cum_hh_count > hh_2 & cum_hh_count <= hh_3, 1, 0),
+         income_4th = ifelse(cum_hh_count > hh_3, 1, 0)) %>%
+  ungroup()
+
+# have to do something different with metdivs where there are 0 households
+na_metdiv <- income_agg %>% 
+  filter(n_hh == 0)
+
+# get the income value at the Xth spot of the distribution
+income2013 <- income2013 %>%
+  filter(!metdiv %in% na_metdiv$metdiv & !is.na(metdiv)) %>%
+  group_by(metdiv) %>%
+  dplyr::summarize(inc_1 = ifelse(income_1st==1, income_cat_inf, NA),
+                   inc_2 = ifelse(income_2nd==1, income_cat_inf, NA),
+                   inc_3 = ifelse(income_3rd==1, income_cat_inf, NA),
+                   inc_4 = ifelse(income_4th==1, income_cat_inf, NA)) %>% 
+  group_by(metdiv) %>%
+  dplyr::summarize(inc_1 = max(inc_1, na.rm = T),
+                   inc_2 = max(inc_2, na.rm = T), 
+                   inc_3 = max(inc_3, na.rm = T),
+                   inc_4 = max(inc_4, na.rm = T)) 
+
+na_metdiv %<>%
+  mutate(inc_1 = NA,
+         inc_2 = NA, 
+         inc_3 = NA, 
+         inc_4 = NA) %>%
+  select(metdiv, inc_1:inc_4)
+
+metdiv2013 <- base::rbind(income2013, na_metdiv)
+
+# here's another way to assign things to variables
+metdiv2013$Year <- 2013
+
+# here's how we save files 
+write_csv(metdiv2013, "cleaned/metdiv1115.csv")
+
+# remove things we don't need (we still need the crosswalk file so we don't have to load it every time. We need the cpi vector)
+rm(income_agg, income2013, metdiv2013, na_metdiv)
+
+# read in the data: x <- read_csv("data")
+# 2014 ####
+income2014 <- read_csv("incomehh/incomehh_1216.csv") 
+
+# get the 5-digit unique county identifier and find their metdivs by merging with the crosswalk cw file
+# %<>% means "to this data, do the following:" 
+# mutate is how you create or modify a new variable. We're making a new variable called stcou 
+# left_join is how we merge two datasets; by = the variable in common across two datasets. left_join retains all observations from the left. 
+income2014 %<>%
+  mutate(stcou = paste0(Geo_STATE, Geo_COUNTY)) %>%
+  left_join(cw, by = "stcou")
+
+# rename the variables. Normally, it's not allowed to name a variable starting with numbers (or to have a mathematical operation sign in the name, like -+/*), but here we do this for other reasons. We put those variable names in `` to tell R that this disallowed naming convention is intentional 
+# rename follows logic new name = old name
+# look at the codebook to find out which income category corresponds to which. These may not be the same across years, so you may have to add more. 
+# We pick the mid-point for each category, so less than 10,000 (0 to 10,000) is assigned 5000, 10,000 to 15,000 is assigned 12,500. I top-code the more than 200,000 category to be 225,000 since the midpoints seem to increase in increments of multiples of 2250's 
+# if ever you get lost for what the midpoint is, try this: value_1 + (value_2 rounded up - value_1)/2, for example for the 5000 to 9999 category 
+5000 + (10000 - 5000)/2
+# look at the codebook named the same as the dataset (.txt) to find out the categories. Notice that even though these are not named like this in the codebook, the variable names all have the SE_ prefix.
+# I would literally copy and paste the codebook and manually edit them into this format:
+income2014 %<>%
+  rename(n_hh = SE_A14001_001,
+         `5000` = SE_A14001_002,
+         `12500` = SE_A14001_003,
+         `17500` = SE_A14001_004,
+         `22500` = SE_A14001_005,
+         `27500` = SE_A14001_006,
+         `32500` = SE_A14001_007,
+         `37500` = SE_A14001_008,
+         `42500` = SE_A14001_009, 
+         `47500` = SE_A14001_010, 
+         `55000` = SE_A14001_011, 
+         `67500` = SE_A14001_012,
+         `87500` = SE_A14001_013,
+         `112500` = SE_A14001_014, 
+         `137500` = SE_A14001_015, 
+         `175000` = SE_A14001_016, 
+         `225000` = SE_A14001_017 
+         
+  )
+
+# pivot longer such that there's a income_cat variable, count variable, stcou, and metdiv variable 
+# this part is a bit hard to understand. For following years, the only thing you need to make sure you edit is the starting variable and ending variable that bookend the colon :
+# and make you sure change what's in the [[]] for cpi to match the current year
+income2014 %<>%
+  rename(trtid10 = Geo_FIPS) %>%
+  select(trtid10, metdiv, `5000`:`225000`) %>%
+  pivot_longer(cols = c(`5000`:`225000`),
+               names_to = "income_cat", 
+               values_to = "count") %>%
+  mutate(income_cat_inf = as.numeric(income_cat)*cpi[["2014"]], 
+         count = ifelse(is.na(count), 0, count))
+
+# aggregate counts of the metdiv households so that we can get distribution
+income_agg <- income2014 %>%
+  group_by(metdiv) %>%
+  dplyr::summarize(n_hh = sum(count, na.rm = T), 
+                   hh_1 = round(n_hh * 0.25, 0), 
+                   hh_2 = round(n_hh * 0.5, 0), 
+                   hh_3 = round(n_hh * 0.75, 0)) %>%
+  ungroup() 
+
+# get cumulative distribution (imagine lining every household up and assigning them a number; we're trying to find the number that corresponds to 25%, 50%, 75%)
+income2014 <- income2014 %>%
+  group_by(metdiv) %>%
+  arrange(metdiv, income_cat_inf) %>%
+  mutate(cum_hh_count = cumsum(count)) %>%
+  left_join(income_agg, by = "metdiv") %>%
+  mutate(income_1st = ifelse(cum_hh_count <= hh_1, 1, 0),
+         income_2nd = ifelse(cum_hh_count > hh_1 & cum_hh_count <= hh_2, 1, 0),
+         income_3rd = ifelse(cum_hh_count > hh_2 & cum_hh_count <= hh_3, 1, 0),
+         income_4th = ifelse(cum_hh_count > hh_3, 1, 0)) %>%
+  ungroup()
+
+# have to do something different with metdivs where there are 0 households
+na_metdiv <- income_agg %>% 
+  filter(n_hh == 0)
+
+# get the income value at the Xth spot of the distribution
+income2014 <- income2014 %>%
+  filter(!metdiv %in% na_metdiv$metdiv & !is.na(metdiv)) %>%
+  group_by(metdiv) %>%
+  dplyr::summarize(inc_1 = ifelse(income_1st==1, income_cat_inf, NA),
+                   inc_2 = ifelse(income_2nd==1, income_cat_inf, NA),
+                   inc_3 = ifelse(income_3rd==1, income_cat_inf, NA),
+                   inc_4 = ifelse(income_4th==1, income_cat_inf, NA)) %>% 
+  group_by(metdiv) %>%
+  dplyr::summarize(inc_1 = max(inc_1, na.rm = T),
+                   inc_2 = max(inc_2, na.rm = T), 
+                   inc_3 = max(inc_3, na.rm = T),
+                   inc_4 = max(inc_4, na.rm = T)) 
+
+na_metdiv %<>%
+  mutate(inc_1 = NA,
+         inc_2 = NA, 
+         inc_3 = NA, 
+         inc_4 = NA) %>%
+  select(metdiv, inc_1:inc_4)
+
+metdiv2014 <- base::rbind(income2014, na_metdiv)
+
+# here's another way to assign things to variables
+metdiv2014$Year <- 2014
+
+# here's how we save files 
+write_csv(metdiv2014, "cleaned/metdiv1216.csv")
+
+# remove things we don't need (we still need the crosswalk file so we don't have to load it every time. We need the cpi vector)
+rm(income_agg, income2014, metdiv2014, na_metdiv)
+
+# read in the data: x <- read_csv("data")
+# 2015 ####
+income2015 <- read_csv("incomehh/incomehh_1317.csv") 
+
+# get the 5-digit unique county identifier and find their metdivs by merging with the crosswalk cw file
+# %<>% means "to this data, do the following:" 
+# mutate is how you create or modify a new variable. We're making a new variable called stcou 
+# left_join is how we merge two datasets; by = the variable in common across two datasets. left_join retains all observations from the left. 
+income2015 %<>%
+  mutate(stcou = paste0(Geo_STATE, Geo_COUNTY)) %>%
+  left_join(cw, by = "stcou")
+
+# rename the variables. Normally, it's not allowed to name a variable starting with numbers (or to have a mathematical operation sign in the name, like -+/*), but here we do this for other reasons. We put those variable names in `` to tell R that this disallowed naming convention is intentional 
+# rename follows logic new name = old name
+# look at the codebook to find out which income category corresponds to which. These may not be the same across years, so you may have to add more. 
+# We pick the mid-point for each category, so less than 10,000 (0 to 10,000) is assigned 5000, 10,000 to 15,000 is assigned 12,500. I top-code the more than 200,000 category to be 225,000 since the midpoints seem to increase in increments of multiples of 2250's 
+# if ever you get lost for what the midpoint is, try this: value_1 + (value_2 rounded up - value_1)/2, for example for the 5000 to 9999 category 
+5000 + (10000 - 5000)/2
+# look at the codebook named the same as the dataset (.txt) to find out the categories. Notice that even though these are not named like this in the codebook, the variable names all have the SE_ prefix.
+# I would literally copy and paste the codebook and manually edit them into this format:
+income2015 %<>%
+  rename(n_hh = SE_A14001_001,
+         `5000` = SE_A14001_002,
+         `12500` = SE_A14001_003,
+         `17500` = SE_A14001_004,
+         `22500` = SE_A14001_005,
+         `27500` = SE_A14001_006,
+         `32500` = SE_A14001_007,
+         `37500` = SE_A14001_008,
+         `42500` = SE_A14001_009, 
+         `47500` = SE_A14001_010, 
+         `55000` = SE_A14001_011, 
+         `67500` = SE_A14001_012,
+         `87500` = SE_A14001_013,
+         `112500` = SE_A14001_014, 
+         `137500` = SE_A14001_015, 
+         `175000` = SE_A14001_016, 
+         `225000` = SE_A14001_017 
+         
+  )
+
+# pivot longer such that there's a income_cat variable, count variable, stcou, and metdiv variable 
+# this part is a bit hard to understand. For following years, the only thing you need to make sure you edit is the starting variable and ending variable that bookend the colon :
+# and make you sure change what's in the [[]] for cpi to match the current year
+income2015 %<>%
+  rename(trtid10 = Geo_FIPS) %>%
+  select(trtid10, metdiv, `5000`:`225000`) %>%
+  pivot_longer(cols = c(`5000`:`225000`),
+               names_to = "income_cat", 
+               values_to = "count") %>%
+  mutate(income_cat_inf = as.numeric(income_cat)*cpi[["2015"]], 
+         count = ifelse(is.na(count), 0, count))
+
+# aggregate counts of the metdiv households so that we can get distribution
+income_agg <- income2015 %>%
+  group_by(metdiv) %>%
+  dplyr::summarize(n_hh = sum(count, na.rm = T), 
+                   hh_1 = round(n_hh * 0.25, 0), 
+                   hh_2 = round(n_hh * 0.5, 0), 
+                   hh_3 = round(n_hh * 0.75, 0)) %>%
+  ungroup() 
+
+# get cumulative distribution (imagine lining every household up and assigning them a number; we're trying to find the number that corresponds to 25%, 50%, 75%)
+income2015 <- income2015 %>%
+  group_by(metdiv) %>%
+  arrange(metdiv, income_cat_inf) %>%
+  mutate(cum_hh_count = cumsum(count)) %>%
+  left_join(income_agg, by = "metdiv") %>%
+  mutate(income_1st = ifelse(cum_hh_count <= hh_1, 1, 0),
+         income_2nd = ifelse(cum_hh_count > hh_1 & cum_hh_count <= hh_2, 1, 0),
+         income_3rd = ifelse(cum_hh_count > hh_2 & cum_hh_count <= hh_3, 1, 0),
+         income_4th = ifelse(cum_hh_count > hh_3, 1, 0)) %>%
+  ungroup()
+
+# have to do something different with metdivs where there are 0 households
+na_metdiv <- income_agg %>% 
+  filter(n_hh == 0)
+
+# get the income value at the Xth spot of the distribution
+income2015 <- income2015 %>%
+  filter(!metdiv %in% na_metdiv$metdiv & !is.na(metdiv)) %>%
+  group_by(metdiv) %>%
+  dplyr::summarize(inc_1 = ifelse(income_1st==1, income_cat_inf, NA),
+                   inc_2 = ifelse(income_2nd==1, income_cat_inf, NA),
+                   inc_3 = ifelse(income_3rd==1, income_cat_inf, NA),
+                   inc_4 = ifelse(income_4th==1, income_cat_inf, NA)) %>% 
+  group_by(metdiv) %>%
+  dplyr::summarize(inc_1 = max(inc_1, na.rm = T),
+                   inc_2 = max(inc_2, na.rm = T), 
+                   inc_3 = max(inc_3, na.rm = T),
+                   inc_4 = max(inc_4, na.rm = T)) 
+
+na_metdiv %<>%
+  mutate(inc_1 = NA,
+         inc_2 = NA, 
+         inc_3 = NA, 
+         inc_4 = NA) %>%
+  select(metdiv, inc_1:inc_4)
+
+metdiv2015 <- base::rbind(income2015, na_metdiv)
+
+# here's another way to assign things to variables
+metdiv2015$Year <- 2015
+
+# here's how we save files 
+write_csv(metdiv2015, "cleaned/metdiv1317.csv")
+
+# remove things we don't need (we still need the crosswalk file so we don't have to load it every time. We need the cpi vector)
+rm(income_agg, income2015, metdiv2015, na_metdiv)
+
+# read in the data: x <- read_csv("data")
+# 2016 ####
+income2016 <- read_csv("incomehh/incomehh_1418.csv") 
+
+# get the 5-digit unique county identifier and find their metdivs by merging with the crosswalk cw file
+# %<>% means "to this data, do the following:" 
+# mutate is how you create or modify a new variable. We're making a new variable called stcou 
+# left_join is how we merge two datasets; by = the variable in common across two datasets. left_join retains all observations from the left. 
+income2016 %<>%
+  mutate(stcou = paste0(Geo_STATE, Geo_COUNTY)) %>%
+  left_join(cw, by = "stcou")
+
+# rename the variables. Normally, it's not allowed to name a variable starting with numbers (or to have a mathematical operation sign in the name, like -+/*), but here we do this for other reasons. We put those variable names in `` to tell R that this disallowed naming convention is intentional 
+# rename follows logic new name = old name
+# look at the codebook to find out which income category corresponds to which. These may not be the same across years, so you may have to add more. 
+# We pick the mid-point for each category, so less than 10,000 (0 to 10,000) is assigned 5000, 10,000 to 15,000 is assigned 12,500. I top-code the more than 200,000 category to be 225,000 since the midpoints seem to increase in increments of multiples of 2250's 
+# if ever you get lost for what the midpoint is, try this: value_1 + (value_2 rounded up - value_1)/2, for example for the 5000 to 9999 category 
+5000 + (10000 - 5000)/2
+# look at the codebook named the same as the dataset (.txt) to find out the categories. Notice that even though these are not named like this in the codebook, the variable names all have the SE_ prefix.
+# I would literally copy and paste the codebook and manually edit them into this format:
+income2016 %<>%
+  rename(n_hh = SE_A14001_001,
+         `5000` = SE_A14001_002,
+         `12500` = SE_A14001_003,
+         `17500` = SE_A14001_004,
+         `22500` = SE_A14001_005,
+         `27500` = SE_A14001_006,
+         `32500` = SE_A14001_007,
+         `37500` = SE_A14001_008,
+         `42500` = SE_A14001_009, 
+         `47500` = SE_A14001_010, 
+         `55000` = SE_A14001_011, 
+         `67500` = SE_A14001_012,
+         `87500` = SE_A14001_013,
+         `112500` = SE_A14001_014, 
+         `137500` = SE_A14001_015, 
+         `175000` = SE_A14001_016, 
+         `225000` = SE_A14001_017 
+         
+  )
+
+# pivot longer such that there's a income_cat variable, count variable, stcou, and metdiv variable 
+# this part is a bit hard to understand. For following years, the only thing you need to make sure you edit is the starting variable and ending variable that bookend the colon :
+# and make you sure change what's in the [[]] for cpi to match the current year
+income2016 %<>%
+  rename(trtid10 = Geo_FIPS) %>%
+  select(trtid10, metdiv, `5000`:`225000`) %>%
+  pivot_longer(cols = c(`5000`:`225000`),
+               names_to = "income_cat", 
+               values_to = "count") %>%
+  mutate(income_cat_inf = as.numeric(income_cat)*cpi[["2016"]], 
+         count = ifelse(is.na(count), 0, count))
+
+# aggregate counts of the metdiv households so that we can get distribution
+income_agg <- income2016 %>%
+  group_by(metdiv) %>%
+  dplyr::summarize(n_hh = sum(count, na.rm = T), 
+                   hh_1 = round(n_hh * 0.25, 0), 
+                   hh_2 = round(n_hh * 0.5, 0), 
+                   hh_3 = round(n_hh * 0.75, 0)) %>%
+  ungroup() 
+
+# get cumulative distribution (imagine lining every household up and assigning them a number; we're trying to find the number that corresponds to 25%, 50%, 75%)
+income2016 <- income2016 %>%
+  group_by(metdiv) %>%
+  arrange(metdiv, income_cat_inf) %>%
+  mutate(cum_hh_count = cumsum(count)) %>%
+  left_join(income_agg, by = "metdiv") %>%
+  mutate(income_1st = ifelse(cum_hh_count <= hh_1, 1, 0),
+         income_2nd = ifelse(cum_hh_count > hh_1 & cum_hh_count <= hh_2, 1, 0),
+         income_3rd = ifelse(cum_hh_count > hh_2 & cum_hh_count <= hh_3, 1, 0),
+         income_4th = ifelse(cum_hh_count > hh_3, 1, 0)) %>%
+  ungroup()
+
+# have to do something different with metdivs where there are 0 households
+na_metdiv <- income_agg %>% 
+  filter(n_hh == 0)
+
+# get the income value at the Xth spot of the distribution
+income2016 <- income2016 %>%
+  filter(!metdiv %in% na_metdiv$metdiv & !is.na(metdiv)) %>%
+  group_by(metdiv) %>%
+  dplyr::summarize(inc_1 = ifelse(income_1st==1, income_cat_inf, NA),
+                   inc_2 = ifelse(income_2nd==1, income_cat_inf, NA),
+                   inc_3 = ifelse(income_3rd==1, income_cat_inf, NA),
+                   inc_4 = ifelse(income_4th==1, income_cat_inf, NA)) %>% 
+  group_by(metdiv) %>%
+  dplyr::summarize(inc_1 = max(inc_1, na.rm = T),
+                   inc_2 = max(inc_2, na.rm = T), 
+                   inc_3 = max(inc_3, na.rm = T),
+                   inc_4 = max(inc_4, na.rm = T)) 
+
+na_metdiv %<>%
+  mutate(inc_1 = NA,
+         inc_2 = NA, 
+         inc_3 = NA, 
+         inc_4 = NA) %>%
+  select(metdiv, inc_1:inc_4)
+
+metdiv2016 <- base::rbind(income2016, na_metdiv)
+
+# here's another way to assign things to variables
+metdiv2016$Year <- 2016
+
+# here's how we save files 
+write_csv(metdiv2016, "cleaned/metdiv1418.csv")
+
+# remove things we don't need (we still need the crosswalk file so we don't have to load it every time. We need the cpi vector)
+rm(income_agg, income2016, metdiv2016, na_metdiv)
+
+# read in the data: x <- read_csv("data")
+# 2017 ####
+income2017 <- read_csv("incomehh/incomehh_1519.csv") 
+
+# get the 5-digit unique county identifier and find their metdivs by merging with the crosswalk cw file
+# %<>% means "to this data, do the following:" 
+# mutate is how you create or modify a new variable. We're making a new variable called stcou 
+# left_join is how we merge two datasets; by = the variable in common across two datasets. left_join retains all observations from the left. 
+income2017 %<>%
+  mutate(stcou = paste0(Geo_STATE, Geo_COUNTY)) %>%
+  left_join(cw, by = "stcou")
+
+# rename the variables. Normally, it's not allowed to name a variable starting with numbers (or to have a mathematical operation sign in the name, like -+/*), but here we do this for other reasons. We put those variable names in `` to tell R that this disallowed naming convention is intentional 
+# rename follows logic new name = old name
+# look at the codebook to find out which income category corresponds to which. These may not be the same across years, so you may have to add more. 
+# We pick the mid-point for each category, so less than 10,000 (0 to 10,000) is assigned 5000, 10,000 to 15,000 is assigned 12,500. I top-code the more than 200,000 category to be 225,000 since the midpoints seem to increase in increments of multiples of 2250's 
+# if ever you get lost for what the midpoint is, try this: value_1 + (value_2 rounded up - value_1)/2, for example for the 5000 to 9999 category 
+5000 + (10000 - 5000)/2
+# look at the codebook named the same as the dataset (.txt) to find out the categories. Notice that even though these are not named like this in the codebook, the variable names all have the SE_ prefix.
+# I would literally copy and paste the codebook and manually edit them into this format:
+income2017 %<>%
+  rename(n_hh = SE_A14001_001,
+         `5000` = SE_A14001_002,
+         `12500` = SE_A14001_003,
+         `17500` = SE_A14001_004,
+         `22500` = SE_A14001_005,
+         `27500` = SE_A14001_006,
+         `32500` = SE_A14001_007,
+         `37500` = SE_A14001_008,
+         `42500` = SE_A14001_009, 
+         `47500` = SE_A14001_010, 
+         `55000` = SE_A14001_011, 
+         `67500` = SE_A14001_012,
+         `87500` = SE_A14001_013,
+         `112500` = SE_A14001_014, 
+         `137500` = SE_A14001_015, 
+         `175000` = SE_A14001_016, 
+         `225000` = SE_A14001_017 
+         
+  )
+
+# pivot longer such that there's a income_cat variable, count variable, stcou, and metdiv variable 
+# this part is a bit hard to understand. For following years, the only thing you need to make sure you edit is the starting variable and ending variable that bookend the colon :
+# and make you sure change what's in the [[]] for cpi to match the current year
+income2017 %<>%
+  rename(trtid10 = Geo_FIPS) %>%
+  select(trtid10, metdiv, `5000`:`225000`) %>%
+  pivot_longer(cols = c(`5000`:`225000`),
+               names_to = "income_cat", 
+               values_to = "count") %>%
+  mutate(income_cat_inf = as.numeric(income_cat), 
+         count = ifelse(is.na(count), 0, count))
+
+# aggregate counts of the metdiv households so that we can get distribution
+income_agg <- income2017 %>%
+  group_by(metdiv) %>%
+  dplyr::summarize(n_hh = sum(count, na.rm = T), 
+                   hh_1 = round(n_hh * 0.25, 0), 
+                   hh_2 = round(n_hh * 0.5, 0), 
+                   hh_3 = round(n_hh * 0.75, 0)) %>%
+  ungroup() 
+
+# get cumulative distribution (imagine lining every household up and assigning them a number; we're trying to find the number that corresponds to 25%, 50%, 75%)
+income2017 <- income2017 %>%
+  group_by(metdiv) %>%
+  arrange(metdiv, income_cat_inf) %>%
+  mutate(cum_hh_count = cumsum(count)) %>%
+  left_join(income_agg, by = "metdiv") %>%
+  mutate(income_1st = ifelse(cum_hh_count <= hh_1, 1, 0),
+         income_2nd = ifelse(cum_hh_count > hh_1 & cum_hh_count <= hh_2, 1, 0),
+         income_3rd = ifelse(cum_hh_count > hh_2 & cum_hh_count <= hh_3, 1, 0),
+         income_4th = ifelse(cum_hh_count > hh_3, 1, 0)) %>%
+  ungroup()
+
+# have to do something different with metdivs where there are 0 households
+na_metdiv <- income_agg %>% 
+  filter(n_hh == 0)
+
+# get the income value at the Xth spot of the distribution
+income2017 <- income2017 %>%
+  filter(!metdiv %in% na_metdiv$metdiv & !is.na(metdiv)) %>%
+  group_by(metdiv) %>%
+  dplyr::summarize(inc_1 = ifelse(income_1st==1, income_cat_inf, NA),
+                   inc_2 = ifelse(income_2nd==1, income_cat_inf, NA),
+                   inc_3 = ifelse(income_3rd==1, income_cat_inf, NA),
+                   inc_4 = ifelse(income_4th==1, income_cat_inf, NA)) %>% 
+  group_by(metdiv) %>%
+  dplyr::summarize(inc_1 = max(inc_1, na.rm = T),
+                   inc_2 = max(inc_2, na.rm = T), 
+                   inc_3 = max(inc_3, na.rm = T),
+                   inc_4 = max(inc_4, na.rm = T)) 
+
+na_metdiv %<>%
+  mutate(inc_1 = NA,
+         inc_2 = NA, 
+         inc_3 = NA, 
+         inc_4 = NA) %>%
+  select(metdiv, inc_1:inc_4)
+
+metdiv2017 <- base::rbind(income2017, na_metdiv)
+
+# here's another way to assign things to variables
+metdiv2017$Year <- 2017
+
+# here's how we save files 
+write_csv(metdiv2017, "cleaned/metdiv1519.csv")
+
+# remove things we don't need (we still need the crosswalk file so we don't have to load it every time. We need the cpi vector)
+rm(income_agg, income2017, metdiv2017, na_metdiv)
