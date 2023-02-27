@@ -6,3 +6,6 @@ misc_data/ltdb7010_acs1317_2010b_gentvars_clean_addacs0812.csv
 misc_data/gent_measures_707a_2010b.csv
 misc_data/tract_to_city_dist.csv
 misc_data/tract_to_city_dist.csv.zip
+.DS_Store
+misc_data/.DS_Store
+misc_data/cleaned/.DS_Store
