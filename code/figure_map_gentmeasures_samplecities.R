@@ -1,7 +1,7 @@
 # -------------------------------------------------------------------------
 # Created by: Jackie Hwang                          
 # Date created: Apr 22, 2021              
-# Last revised: Jul 27, 2022                
+# Last revised: May 5, 2023, Iris Zhang                
 # Project: PSID Gentrification-Displacement         
 # Subproject: Racial Strat  
 # Re: Create maps of gentrification measures       
@@ -18,7 +18,7 @@
 # Log updates:
 # 04/22/21: NA
 # 07/27/22: create map for RVE measure only
-
+# 05/05/22: create map for RVE_MSA measure only, and then RVE and FM50_MSA
 
 # Setup: -----------------------------------------------------------------------
 
@@ -46,17 +46,30 @@ library('gridExtra')
 
 
 # Set working directory: 
-homedir <- 'C:/Users/jacks17/Dropbox/1RESEARCH/'
-workdir <- 'Residential Mobility/PSID project/Gentrification and Mobility PSID Data/Gentrification Measures/'
-savedir <- 'G:\\My Drive\\PROJECT FOLDER  Gentrification and PSID Displacement\\PSID Displacement_RA\\Drafts\\Racial Stratification/'
-mapdir <-  'G:\\My Drive\\PROJECT FOLDER  Gentrification and PSID Displacement\\Gentrification Measures_RA/'
-
-setwd(paste0(homedir, workdir))
+rm(list = ls())
+homedir <- paste0(dirname(rstudioapi::getSourceEditorContext()$path))
+setwd(paste0(homedir, "/.."))
+mapdir <- "~/Google Drive/My Drive/Stanford/PROJECT FOLDER_Gentrification and PSID Displacement/Gentrification Measures_RA"
 
 # Import data:
 
 # Measures in 2010 census boundaries
-gentdat10 <- read.csv(file = "gent_measures_707a_2010b.csv")
+gentdat10 <- read_csv("misc_data/gent_measures_707a_2010b.csv") 
+gentdat10_msa <- read_csv("misc_data/gent_measures_907a_allmsa.csv")
+
+names(gentdat10)
+names(gentdat10_msa)
+
+gentdat10 %<>%
+  left_join(gentdat10_msa %>% select(trtid10, fm50_gentdum_007a, dhd_rve_gentdumm_007a)) %>%
+  select(trtid10, metdiv, placefp, ccflag, dhd_rve_gentdumc_007a.2000, fm50_gentdum_007a, dhd_rve_gentdumm_007a) %>%
+  rename(rve_msa_gentdum_007a.2000 = dhd_rve_gentdumm_007a,
+         rve_city_gentdum_007a.2000 = dhd_rve_gentdumc_007a.2000,
+         fm50_gentdum_007a.2000 = fm50_gentdum_007a)
+
+names(gentdat10)
+rm(gentdat10_msa)
+
 # These measures are based on tracts in metro areas with populations > 100 and 
 # housing units > 50 at the beginning and end of each relevant decade.
 
@@ -70,14 +83,13 @@ shapefile <- readOGR("Basemaps", "US_tract_2010")
 # Mapping API key (needed for Google Maps): 
 register_google("AIzaSyCO-hk4AjUgTdMKDuv18f66py8NIdrf4qU")
 
-
 # Parameters: 
 
 # vectors for gent measures and years 
-measures <- c("dhdc", "dhdm", "fm50")
-measures_names <- c("HW Gentrification Measure", "HW-M Gentrification Measure", "FM Gentrification Measure")
-measures_rve <- c("dhd_rve_gentdumc")
-measures_rve_names <- c("DHD Gentrification Measure")
+measures <- c("rve_city", "fm50")
+measures_names <- c("HW City Gentrification Measure", "FM Gentrification Measure")
+measures_rve <- c("rve_msa_gentdum")
+measures_rve_names <- c("HW Gentrification Measure")
 gentyears <- c("2000")
 gentyears_names <- c("2000-2017")
 
@@ -107,8 +119,7 @@ cities_zoom <- c(11, 11, 12)
 # get data for needed cities
 gentdat <-   
   gentdat10 %>% filter(metdiv %in% metdivs_id & 
-                         placefp %in% cities_id & 
-                         ccflag %in% 1)
+                         placefp %in% cities_id)
 
 # create list with each city's data
 gentdat_city <- 
@@ -172,11 +183,11 @@ names(plots) <- cities
 
 
 # plot all gent measures for each city by decade
-# write script that results in 3x3 panels of each measure and only includes dhd_rve
+# write script that results in 2x3 panels of each measure and only includes dhd_rve
 # for each decade for each city
 
 # set directory
-setwd(savedir)
+setwd(paste0(homedir, "/.."))
 
 alldat <- gentdat
 
@@ -264,26 +275,23 @@ foreach (
 maps_out <- 
   arrangeGrob(
     plots_out[[1]][[1]][[1]], 
-    plots_out[[1]][[1]][[2]], 
-    plots_out[[1]][[1]][[3]], 
+    plots_out[[1]][[1]][[2]],
     plots_out[[2]][[1]][[1]], 
     plots_out[[2]][[1]][[2]], 
-    plots_out[[2]][[1]][[3]], 
     plots_out[[3]][[1]][[1]], 
     plots_out[[3]][[1]][[2]], 
-    plots_out[[3]][[1]][[3]], 
     nrow = 3
   )
-filename <- "maps_hw_hwm_fm_samplecities_2000_2017.png"
+filename <- "maps_hw_fm_samplecities_2000_2017.pdf"
 ggsave(filename, plot = maps_out, width = 15, height = 15, dpi = 300)
 
-# RVE only maps ----
+# RVE_msa only maps ----
 # plot RVE gent measures for each city by decade
 # write script that results in 1x3 panel
 # for each decade for each city
 
 # set directory
-setwd(savedir)
+setwd(paste0(homedir, "/.."))
 
 alldat <- gentdat
 
@@ -375,6 +383,7 @@ maps_out <-
     plots_out[[3]][[1]][[1]], 
     nrow = 1
   )
-filename <- "maps_rve_samplecities_2000_2017.png"
+filename <- "maps_rve_samplecities_2000_2017.pdf"
 ggsave(filename, plot = maps_out, width = 15, height = 5, dpi = 300)
 
+rm(list = ls())

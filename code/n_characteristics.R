@@ -1,3 +1,4 @@
+rm(list = ls())
 homedir <- paste0(dirname(rstudioapi::getSourceEditorContext()$path))
 workdir <- paste0("/../misc_data/")
 setwd(paste0(homedir, workdir))
@@ -6,18 +7,28 @@ library(tidyverse)
 library(foreign)
 library(readr)
 
-rm(list = ls())
-
 #var
 # pop, hu, nhwhite, nhblk, hispanic, asian, hinc, pcol, ppov, pprof, mhmval, mrent, pnew, pocc
 
-neighborhoods <- read_csv('ltdb7010_acs1317_2010b_gentvars_clean_addacs0812.csv')
+neighborhoods <- read_csv('~/Google Drive/My Drive/Stanford/PROJECT FOLDER_Gentrification and PSID Displacement/Gentrification Measures_RA/US Measures_PSID_replication_RA/ltdb7010_acs1317_2010b_gentvars_clean_addacs0812.csv')
 
 gent <- read_csv('gent_measures_707a_2010b.csv')
-gent <- gent %>%
-  select(trtid10, ccflag, (contains("007a.2000") | contains("00.2000"))) %>%
-  select(trtid10, ccflag, (contains("fm") | contains("dhd"))) %>%
-  select(-((contains("40") | contains("gentcat") | contains("alt"))))
+gentdat10_msa <- read_csv("gent_measures_907a_allmsa.csv")
+
+names(gent)
+names(gentdat10_msa)
+
+gent %<>%
+  left_join(gentdat10_msa %>% select(trtid10, fm_abledum50_00, fm50_gentdum_007a, dhd_abledum50m_00, dhd_rve_gentdumm_007a)) %>%
+  select(trtid10, metdiv, placefp, ccflag, dhd_abledum50c_00.2000, dhd_rve_gentdumc_007a.2000, fm_abledum50_00, fm50_gentdum_007a, dhd_abledum50m_00, dhd_rve_gentdumm_007a) %>%
+  rename(rve_msa_gentdum_007a.2000 = dhd_rve_gentdumm_007a,
+         fm50_gentdum_007a.2000 = fm50_gentdum_007a,
+         fm_abledum50_00.2000 = fm_abledum50_00,
+         dhd_abledum50m_00.2000 = dhd_abledum50m_00
+         )
+
+names(gent)
+rm(gentdat10_msa)
 
 gentlong <- gent %>%
   pivot_longer(cols = contains("."),
@@ -36,50 +47,38 @@ table(nh$dhd_abledum50c_00, exclude = NULL)
 table(nh$fm_abledum50_00, exclude = NULL)
 table(nh$dhd_abledum50m_00, exclude = NULL)
 
-table(nh$ccflag)
-
-# how many tracts should we still have? 
-74001 - 7629 
-
-# city tracts excluded
-7629/27759
-
-nh <- nh %>%
-  filter(!is.na(dhd_abledum50c_00) & !is.na(fm_abledum50_00)) # should be 66372
+table(nh$rve_msa_gentdum_007a, exclude = NULL)
 
 nh %<>%
+  mutate(rve_msa_gentdum_007a = ifelse(dhd_abledum50m_00 == 0, NA,
+                                       rve_msa_gentdum_007a))
+
+nh %<>%
+  filter(!is.na(dhd_abledum50c_00) & !is.na(fm_abledum50_00) & !is.na(dhd_abledum50m_00)) %>%
   mutate(majbflag = ifelse(pnhblk00 >= 50, 1, 0))
 
 # pct of gent and non-gent tracts that are majority black in 2000
-table(nh$dhd_rve_gentdumc_007a)
+table(nh$rve_msa_gentdum_007a)
 # 3513 gent and 10060 non-gent 
-nh %>% filter(dhd_rve_gentdumc_007a == 1 & majbflag == 1) %>% nrow()
-817/3512
+nh %>% filter(rve_msa_gentdum_007a == 1 & majbflag == 1) %>% nrow()
+1121/7813
 
-nh %>% filter(dhd_rve_gentdumc_007a == 0 & majbflag == 1) %>% nrow()
-2617/10060
+nh %>% filter(rve_msa_gentdum_007a == 0 & majbflag == 1) %>% nrow()
+2617/25111
 
 nh <- nh %>%
-  mutate(ntypefm = ifelse(is.na(fm50_gentdum_007a) & ccflag==0, "Nongentrifiable Non-city_FM",
-                          ifelse(is.na(fm50_gentdum_007a) & ccflag==1, "Nongentrifiable City_FM",
-                                 ifelse(fm50_gentdum_007a==1, "Gentrifying_FM", "Nongentrifying_FM"))),
-         ntypefm = factor(ntypefm, levels = c("Nongentrifiable Non-city_FM", "Nongentrifiable City_FM",
+  mutate(ntypefm = ifelse(is.na(fm50_gentdum_007a), "Nongentrifiable_FM",
+                         ifelse(fm50_gentdum_007a==1, "Gentrifying_FM", "Nongentrifying_FM")),
+         ntypefm = factor(ntypefm, levels = c("Nongentrifiable_FM", 
                                               "Gentrifying_FM", "Nongentrifying_FM")),
-         ntyperve = ifelse(is.na(dhd_rve_gentdumc_007a) & ccflag==0, "Nongentrifiable Non-city_RVE",
-                            ifelse(is.na(dhd_rve_gentdumc_007a) & ccflag==1, "Nongentrifiable City_RVE",
-                                   ifelse(dhd_rve_gentdumc_007a==1, "Gentrifying_RVE", "Nongentrifying_RVE"))),
-         ntyperve = factor(ntyperve, levels = c("Nongentrifiable Non-city_RVE", "Nongentrifiable City_RVE",
+         ntyperve = ifelse(is.na(dhd_rve_gentdumc_007a), "Nongentrifiable_RVE",
+                           ifelse(dhd_rve_gentdumc_007a==1, "Gentrifying_RVE", "Nongentrifying_RVE")),
+         ntyperve = factor(ntyperve, levels = c("Nongentrifiable_RVE",
                                                   "Gentrifying_RVE", "Nongentrifying_RVE")),
-         ntypedhdc = ifelse(is.na(dhdc_gentdum_007a) & ccflag==0, "Nongentrifiable Non-city_DHDC",
-                            ifelse(is.na(dhdc_gentdum_007a) & ccflag==1, "Nongentrifiable City_DHDC",
-                                   ifelse(dhdc_gentdum_007a==1, "Gentrifying_DHDC", "Nongentrifying_DHDC"))),
-         ntypedhdc = factor(ntypedhdc, levels = c("Nongentrifiable Non-city_DHDC", "Nongentrifiable City_DHDC",
-                                              "Gentrifying_DHDC", "Nongentrifying_DHDC")),
-         ntypedhdm = ifelse(is.na(dhdm_gentdum_007a) & ccflag==0, "Nongentrifiable Non-city_DHDM",
-                            ifelse(is.na(dhdm_gentdum_007a) & ccflag==1, "Nongentrifiable City_DHDM",
-                                   ifelse(dhdm_gentdum_007a==1, "Gentrifying_DHDM", "Nongentrifying_DHDM"))),
-         ntypedhdm = factor(ntypedhdm, levels = c("Nongentrifiable Non-city_DHDM", "Nongentrifiable City_DHDM",
-                                              "Gentrifying_DHDM", "Nongentrifying_DHDM")))
+         ntypervemsa = ifelse(is.na(rve_msa_gentdum_007a), "Nongentrifiable_RVEMSA",
+                           ifelse(rve_msa_gentdum_007a==1, "Gentrifying_RVEMSA", "Nongentrifying_RVEMSA")),
+         ntypervemsa = factor(ntypervemsa, levels = c("Nongentrifiable_RVEMSA", "Gentrifying_RVEMSA", "Nongentrifying_RVEMSA"))
+         )
 cpi <- c(1.53,1.04)
 
 nh <- nh %>%
@@ -95,7 +94,7 @@ nh <- nh %>%
 varindex = c("pop00", "pop7a", "hu00", "hu7a", "pnhwht00", "pnhwht7a", "pnhblk00", "pnhblk7a", "phisp00", "phisp7a",
              "pasian00", "pasian7a", "hinci00", "hinci7a", "pcol00", "pcol7a", "ppov00", "ppov7a",
              "pprof00", "pprof7a", "mhmvali00", "mhmvali7a", "mrenti00", "mrenti7a", "p20young00", "p20young7a",
-             "pown00", "pown7a", "ntyperve", "ntypefm", "ntypedhdc", "ntypedhdm") #variables to keep
+             "pown00", "pown7a", "ntyperve", "ntypefm", "ntypervemsa") #variables to keep
 
 nh <- nh %>%
   select(trtid10, ccflag, all_of(varindex))
@@ -132,35 +131,7 @@ for (i in varindex_desc) {
  }
 }
 
-# do this for dhdc
-for (i in varindex_desc) {
-  test <- as.data.frame(nh %>%
-                          group_by(ntypedhdc) %>%
-                          summarize(mean = mean(.data[[i]], na.rm = T)))
-  names(test)[2] = paste0("mean_", i)
-  if (i == "pop00") {
-    ninfodhdc <- as.data.frame(test)
-    names(ninfodhdc) <- names(test)
-  } else {
-    ninfodhdc <- left_join(ninfodhdc, test, by = "ntypedhdc")
-  }
-}
-
-# do this for dhdm
-for (i in varindex_desc) {
-  test <- as.data.frame(nh %>%
-                          group_by(ntypedhdm) %>%
-                          summarize(mean = mean(.data[[i]], na.rm = T)))
-  names(test)[2] = paste0("mean_", i)
-  if (i == "pop00") {
-    ninfodhdm <- as.data.frame(test)
-    names(ninfodhdm) <- names(test)
-  } else {
-    ninfodhdm <- left_join(ninfodhdm, test, by = "ntypedhdm")
-  }
-}
-
-# rve
+# do this for rve
 for (i in varindex_desc) {
   test <- as.data.frame(nh %>%
                           group_by(ntyperve) %>%
@@ -174,31 +145,32 @@ for (i in varindex_desc) {
   }
 }
 
+# rvemsa
+for (i in varindex_desc) {
+  test <- as.data.frame(nh %>%
+                          group_by(ntypervemsa) %>%
+                          summarize(mean = mean(.data[[i]], na.rm = T)))
+  names(test)[2] = paste0("mean_", i)
+  if (i == "pop00") {
+    ninforvemsa <- as.data.frame(test)
+    names(ninforvemsa) <- names(test)
+  } else {
+    ninforvemsa <- left_join(ninforvemsa, test, by = "ntypervemsa")
+  }
+}
+
 # transpose everything
 ninfofm <- rownames_to_column(as.data.frame(t(ninfofm)), var = "descriptive_name")
-ninfodhdc <- rownames_to_column(as.data.frame(t(ninfodhdc)), var = "descriptive_name")
-ninfodhdm <- rownames_to_column(as.data.frame(t(ninfodhdm)), var = "descriptive_name")
 ninforve <- rownames_to_column(as.data.frame(t(ninforve)), var = "descriptive_name")
+ninforvemsa <- rownames_to_column(as.data.frame(t(ninforvemsa)), var = "descriptive_name")
 
-# update column names - UAR
+# update column names 
 names(ninfofm) <- c("gentdum", "Nongentrifiable_FM", "Gentrifying_FM", "Non-Gentrifying_FM")
 ninfofm <- ninfofm[-1, ]
-names(ninfodhdc) <- c("gentdum", "Nongentrifiable_DHDC", "Gentrifying_DHDC", "Non-Gentrifying_DHDC")
-ninfodhdc <- ninfodhdc[-1, ]
-names(ninfodhdm) <- c("gentdum", "Nongentrifiable_DHDM", "Gentrifying_DHDM",  "Non-Gentrifying_DHDM")
-ninfodhdm <- ninfodhdm[-1, ]
 names(ninforve) <- c("gentdum", "Nongentrifiable_RVE", "Gentrifying_RVE",  "Non-Gentrifying_RVE")
 ninforve <- ninforve[-1, ]
-
-# update column names full version 
-names(ninfofm) <- c("gentdum", "Nongentrifiable Non-city_FM", "Nongentrifiable City_FM", "Gentrifying_FM", "Non-Gentrifying_FM")
-ninfofm <- ninfofm[-1, ]
-names(ninfodhdc) <- c("gentdum", "Nongentrifiable Non-city_DHDC", "Nongentrifiable City_DHDC", "Gentrifying_DHDC", "Non-Gentrifying_DHDC")
-ninfodhdc <- ninfodhdc[-1, ]
-names(ninfodhdm) <- c("gentdum", "Nongentrifiable Non-city_DHDM", "Nongentrifiable City_DHDM", "Gentrifying_DHDM",  "Non-Gentrifying_DHDM")
-ninfodhdm <- ninfodhdm[-1, ]
-names(ninforve) <- c("gentdum", "Nongentrifiable Non-city_RVE", "Nongentrifiable City_RVE", "Gentrifying_RVE",  "Non-Gentrifying_RVE")
-ninforve <- ninforve[-1, ]
+names(ninforvemsa) <- c("gentdum", "Nongentrifiable_RVEMSA", "Gentrifying_RVEMSA",  "Non-Gentrifying_RVEMSA")
+ninforvemsa <- ninforvemsa[-1, ]
 
 # get total tally of each level of the gentdum, FM
 nfm <- as.data.frame(nh %>%
@@ -210,26 +182,6 @@ nfm <- as.data.frame(nh %>%
 names(nfm) <- names(ninfofm)
 nfm <- nfm[-1, ]
 
-# get total tally of each level of the gentdum, DHDC
-ndhdc <- as.data.frame(nh %>%
-                       group_by(ntypedhdc) %>%
-                       tally() %>%
-                       t()) %>%
-  rownames_to_column(., var = "descriptive_name")
-
-names(ndhdc) <- names(ninfodhdc) 
-ndhdc <- ndhdc[-1, ]
-
-# get total tally of each level of the gentdum, DHDM
-ndhdm <- as.data.frame(nh %>%
-                       group_by(ntypedhdm) %>%
-                       tally() %>%
-                       t()) %>%
-  rownames_to_column(., var = "descriptive_name")
-
-names(ndhdm) <- names(ninfodhdm) 
-ndhdm <- ndhdm[-1, ]
-
 # get total tally of each level of the gentdum, RVE
 nrve <- as.data.frame(nh %>%
                          group_by(ntyperve) %>%
@@ -240,17 +192,25 @@ nrve <- as.data.frame(nh %>%
 names(nrve) <- names(ninforve) 
 nrve <- nrve[-1, ]
 
+# get total tally of each level of the gentdum, RVEMSA
+nrvemsa <- as.data.frame(nh %>%
+                        group_by(ntypervemsa) %>%
+                        tally() %>%
+                        t()) %>%
+  rownames_to_column(., var = "descriptive_name")
+
+names(nrvemsa) <- names(ninforvemsa) 
+nrvemsa <- nrvemsa[-1, ]
+
 # add to each dataset
 ninfofm <- base::rbind(ninfofm, nfm)
-ninfodhdc <- base::rbind(ninfodhdc, ndhdc)
-ninfodhdm <- base::rbind(ninfodhdm, ndhdm)
 ninforve <- base::rbind(ninforve, nrve)
+ninforvemsa <- base::rbind(ninforvemsa, nrvemsa)
 
 # create table - in UAR we do fm and dhdc only; change for papers using dhdm also 
 desc_table <- ninfofm %>%
-  left_join(ninfodhdc, by = "gentdum") %>%
-  left_join(ninfodhdm, by = "gentdum") %>%
-  left_join(ninforve, by = "gentdum")
+  left_join(ninforve, by = "gentdum") %>%
+  left_join(ninforvemsa, by = "gentdum")
 
 # format row names
 formatted_rows <- c(
