@@ -64,7 +64,7 @@ nh %>% filter(rve_msa_gentdum_007a == 1 & majbflag == 1) %>% nrow()
 1121/7813
 
 nh %>% filter(rve_msa_gentdum_007a == 0 & majbflag == 1) %>% nrow()
-2617/25111
+4009/25111
 
 nh <- nh %>%
   mutate(ntypefm = ifelse(is.na(fm50_gentdum_007a), "Nongentrifiable_FM",
