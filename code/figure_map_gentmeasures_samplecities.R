@@ -18,7 +18,7 @@
 # Log updates:
 # 04/22/21: NA
 # 07/27/22: create map for RVE measure only
-# 05/05/22: create map for RVE_MSA measure only, and then RVE and FM50_MSA
+# 05/05/22: create map for RVE_MSA measure only, and then RVE (with ccflag == 1) and FM50_MSA (without ccflag == 1) in a separate plot.
 
 # Setup: -----------------------------------------------------------------------
 
