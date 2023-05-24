@@ -33,7 +33,7 @@ library('openxlsx')
 library('sp')
 library('rgdal')
 library('ggmap')
-# library('sf')
+library('sf')
 # library('rgeos')
 # library('RColorBrewer')
 # library('maps')
@@ -46,7 +46,6 @@ library('gridExtra')
 
 
 # Set working directory: 
-rm(list = ls())
 homedir <- paste0(dirname(rstudioapi::getSourceEditorContext()$path))
 setwd(paste0(homedir, "/.."))
 mapdir <- "~/Google Drive/My Drive/Stanford/PROJECT FOLDER_Gentrification and PSID Displacement/Gentrification Measures_RA"
@@ -78,7 +77,7 @@ length(unique(gentdat10$trtid10))
 
 # Census tract shapefile 
 setwd(mapdir)
-shapefile <- readOGR("Basemaps", "US_tract_2010")
+shapefile <- sf::st_read("Basemaps", "US_tract_2010")
 
 # Mapping API key (needed for Google Maps): 
 register_google("AIzaSyCO-hk4AjUgTdMKDuv18f66py8NIdrf4qU")
@@ -108,6 +107,7 @@ metdivs_id <- c(19804, 37964, 41884)
 cities_id <- c(22000, 60000, 67000)
 cities_names <- c("Detroit, MI", "Philadelphia, PA", "San Francisco, CA")
 cities_zoom <- c(11, 11, 12)
+msa_names <- c("Detroit-Livonia-Dearborn, MI", "Philadelphia, PA", "San Francisco-San Mateo-Redwood City, CA")
 
 # Main Script -------------------------------------------------------------
 
@@ -118,69 +118,66 @@ cities_zoom <- c(11, 11, 12)
 
 # get data for needed cities
 gentdat <-   
-  gentdat10 %>% filter(metdiv %in% metdivs_id & 
-                         placefp %in% cities_id)
+  gentdat10 %>% filter(metdiv %in% metdivs_id) %>%
+  mutate(msa_name = case_when(metdiv == 19804 ~ "Detroit-Livonia-Dearborn, MI", 
+                         metdiv == 37964 ~ "Philadelphia, PA",
+                         metdiv == 41884 ~ "San Francisco-San Mateo-Redwood City, CA"))
 
 # create list with each city's data
 gentdat_city <- 
   foreach (i = 1:length(cities)) %do% {
-    gentdat %>% filter(metdiv %in% metdivs_id[i] & 
-                         placefp %in% cities_id[i])
+    gentdat %>% filter(metdiv %in% metdivs_id[i])
   }
-names(gentdat_city) <- cities
-
+names(gentdat_city) <- msa_names
 
 # create shapefiles for each city 
-
 # reduce file size to tracts needed
 dat_sp <- subset(shapefile, shapefile$GEOID10S %in% gentdat$trtid10)
 
-# transform to google map coordinates 
-dat_sp <- spTransform(dat_sp, CRS("+proj=longlat +datum=WGS84"))
+# Transform to Google Map Coordinates 
+dat_sp <- sf::st_transform(dat_sp, CRS("+proj=longlat +datum=WGS84"))
 
-# create shapefile for each city 
-dat_sp_city <- 
+# Create shapefile for each city (divide shapefiles into each city)
+plots <- 
   foreach (i = 1:length(gentdat_city)) %do% {
-    subset(dat_sp, dat_sp$GEOID10S %in% gentdat_city[[i]]$trtid10)
+    subset(dat_sp, dat_sp$GEOID10S %in% as.character(gentdat_city[[i]]$trtid10))
   }
+names(plots) <- msa_names
 
+all_map_dat = rbind(plots[[1]],
+                    plots[[2]],
+                    plots[[3]])
 
 # add google maps for each city 
 
 # get center coordinates of each city
 centers <- 
   foreach (i = 1:length(cities)) %do% {
-    geocode(cities_names[i])
+    sf::st_coordinates(
+      sf::st_centroid(sf::st_union(plots[[msa_names[i]]]))
+    )
   }
-names(centers) <- cities
+names(centers) <- msa_names
 
 # get maps for each city
 gmaps <- 
   foreach(i = 1:length(cities)) %do% {
     gmap <- 
       get_map(
-        c(lon=centers[[i]]$lon, lat=centers[[i]]$lat),
+        c(lon=centers[[i]][1], lat=centers[[i]][2]),
         zoom = cities_zoom[i], 
         maptype = "roadmap", 
         source = "google", 
-        color = "bw")
+        color = "bw", 
+        alpha = 0.1)
     # convert to google map
     gmap <- ggmap(gmap)
     return(gmap)
   }
-names(gmaps) <- cities
+names(gmaps) <- msa_names
 
 # clean up 
 rm(gmap, i)
-
-
-# create plots for each city
-plots <- 
-  foreach(i = 1:length(cities)) %do% {
-    fortify(dat_sp_city[[i]])
-  }
-names(plots) <- cities
-
 
 # plot all gent measures for each city by decade
 # write script that results in 2x3 panels of each measure and only includes dhd_rve
@@ -191,6 +188,82 @@ setwd(paste0(homedir, "/.."))
 
 alldat <- gentdat
 
+plot_dat = all_map_dat %>% 
+  left_join(alldat, 
+            by = c("GEOID10" = "trtid10"))
+plot_dat <- st_transform(plot_dat, CRS("+proj=longlat +datum=WGS84"))
+
+## Create maps ----
+maps <- list()
+
+# Map Set 1: Maps of gentrifying/gentrifiable tracts
+for (measure in measures) {
+  for (city in cities) {
+    mapname <- paste0(measure, "_", city)
+    # create map
+    map <-
+      gmaps[[city]] +
+      geom_sf(
+        data = plot_dat %>% filter(city_label == city) %>% rename("var" = measure),
+        aes(fill = var),    
+        alpha = .9,
+        size = 0.1,
+        color = 'grey45',
+        inherit.aes = F) +
+      ggtitle(city) + 
+      map_theme
+    
+    # Colors for continous measure map
+    if (measure == "gent_cont_002a") {
+      map <- map +
+        scale_fill_gradient(
+          low = "lightpink", 
+          high = "darkred",
+          na.value = "white") +
+        guides(fill = guide_colorbar(barwidth = 10))
+      
+      # Colors for cat measures
+    } else {
+      map <- map +
+        scale_fill_manual(
+          values = gentcolors,
+          limits = force,
+          guide = "legend")
+    }
+    maps[[mapname]] <- map
+  }
+}
+
+for (measure in measures) {
+  
+  measure_name <- names(measures)[measures == measure]
+  map_names <- paste0(measure, "_", cities)
+  
+  plotlist <- maps[names(maps) %in% map_names]
+  
+  map_panel <- ggpubr::ggarrange(
+    plotlist = plotlist,
+    common.legend = T,
+    legend = "bottom",
+    ncol = 3,
+    nrow = 1
+  ) %>%
+    
+    annotate_figure(
+      top = text_grob(measure_name,
+                      color = "black", 
+                      face = "bold", 
+                      size = 8)
+    )
+  
+  filename <- paste0("gent-maps/", 
+                     measure,
+                     ".png")
+  
+  ggsave(filename = filename, 
+         plot = map_panel, 
+         width = 8.5, height = 3.5)
+}
 # write a loop to produce maps: 
 # for each city
 # for each period
@@ -215,8 +288,8 @@ foreach (
           foreach(l = c(0, 1),
                   .combine = rbind.data.frame) %do% {
                     out <-
-                      fortify(subset(dat_sp_city[[i]],
-                                     dat_sp_city[[i]]$GEOID10S %in%
+                      fortify(subset(plots[[i]],
+                                     plots[[i]]$GEOID10S %in%
                                        gentdat_city[[i]]$trtid10[
                                          which(col == l)]))
                     if (nrow(out) != 0) {
@@ -225,8 +298,8 @@ foreach (
                   }
         # add NA (nongentrifiable) to dataset
         out <-
-          fortify(subset(dat_sp_city[[i]],
-                         dat_sp_city[[i]]$GEOID10S %in%
+          fortify(subset(plots[[i]],
+                         plots[[i]]$GEOID10S %in%
                            gentdat_city[[i]]$trtid10[
                              which(is.na(col))]))
         if (nrow(out) != 0) {

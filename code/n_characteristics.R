@@ -57,8 +57,12 @@ nh %<>%
   filter(!is.na(dhd_abledum50c_00) & !is.na(fm_abledum50_00) & !is.na(dhd_abledum50m_00)) %>%
   mutate(majbflag = ifelse(pnhblk00 >= 50, 1, 0))
 
+# pct of metro tracts that are gentrifiable and 
 # pct of gent and non-gent tracts that are majority black in 2000
-table(nh$rve_msa_gentdum_007a)
+table(nh$rve_msa_gentdum_007a, exclude = NULL)
+(7813+25111)/(25111+7813+33447)
+7813/(7813+25111)
+7813/(7813+25111+33447)
 # 3513 gent and 10060 non-gent 
 nh %>% filter(rve_msa_gentdum_007a == 1 & majbflag == 1) %>% nrow()
 1121/7813
