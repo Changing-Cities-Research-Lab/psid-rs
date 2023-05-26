@@ -49,10 +49,10 @@ library('tidyr')
 # Set working directory: 
 homedir <- paste0(dirname(rstudioapi::getSourceEditorContext()$path))
 setwd(paste0(homedir, "/.."))
-# mapdir <- "~/Google Drive/My Drive/Stanford/PROJECT FOLDER_Gentrification and PSID Displacement/Gentrification Measures_RA"
+mapdir <- "~/Google Drive/My Drive/Stanford/PROJECT FOLDER_Gentrification and PSID Displacement/Gentrification Measures_RA"
 
 # VK's mapdir:
-mapdir <- "/Users/vasudhak/Documents/GitHub/oak-data-repo/oakland_shapefiles"
+# mapdir <- "/Users/vasudhak/Documents/GitHub/oak-data-repo/oakland_shapefiles"
 
 # Import data:
 
