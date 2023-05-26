@@ -49,10 +49,10 @@ library('tidyr')
 # Set working directory: 
 homedir <- paste0(dirname(rstudioapi::getSourceEditorContext()$path))
 setwd(paste0(homedir, "/.."))
-mapdir <- "~/Google Drive/My Drive/Stanford/PROJECT FOLDER_Gentrification and PSID Displacement/Gentrification Measures_RA"
+# mapdir <- "~/Google Drive/My Drive/Stanford/PROJECT FOLDER_Gentrification and PSID Displacement/Gentrification Measures_RA"
 
 # VK's mapdir:
-# mapdir <- "/Users/vasudhak/Documents/GitHub/oak-data-repo/oakland_shapefiles"
+mapdir <- "/Users/vasudhak/Documents/GitHub/oak-data-repo/oakland_shapefiles"
 
 # Import data:
 
@@ -166,6 +166,7 @@ centers <-
   }
 # test <- centers
 # centers <- test
+names(centers) <- msa_names
 
 # slightly adjust sf center
 centers[["San Francisco-San Mateo-Redwood City, CA"]][2] <- 37.463 
@@ -260,7 +261,7 @@ hw_fm_panel <- ggpubr::ggarrange(
     nrow = 3
   )
 
-ggsave(filename = "figures/maps_hw_fm_samplecities_2000_2017_v2.pdf", 
+ggsave(filename = "figures/maps_hw_fm_samplecities_2000_2017_v2.png", 
        plot = hw_fm_panel, 
        width = 15, height = 15, dpi = 300)
 
@@ -276,7 +277,7 @@ rve_panel <- ggpubr::ggarrange(
   nrow = 1
 )
 
-ggsave(filename = "figures/maps_rve_samplecities_2000_2017_v2.pdf", 
+ggsave(filename = "figures/maps_rve_samplecities_2000_2017_v2.png", 
        plot = rve_panel, 
        width = 15, height = 5, dpi = 300)
 
