@@ -64,11 +64,14 @@ names(gentdat10)
 names(gentdat10_msa)
 
 gentdat10 %<>%
-  left_join(gentdat10_msa %>% select(trtid10, fm50_gentdum_007a, dhd_rve_gentdumm_007a)) %>%
-  select(trtid10, metdiv, placefp, ccflag, dhd_rve_gentdumc_007a.2000, fm50_gentdum_007a, dhd_rve_gentdumm_007a) %>%
-  rename(rve_msa_gentdum_007a.2000 = dhd_rve_gentdumm_007a,
+  left_join(gentdat10_msa %>% select(trtid10, dhd_abledum50m_00, fm50_gentdum_007a, dhd_rve_gentdumm_007a)) %>%
+  select(trtid10, metdiv, placefp, ccflag, dhd_abledum50m_00, dhd_rve_gentdumc_007a.2000, fm50_gentdum_007a, dhd_rve_gentdumm_007a) %>%
+  rename(rve_msa_abledum = dhd_abledum50m_00,
+         rve_msa_gentdum_007a.2000 = dhd_rve_gentdumm_007a,
          rve_city_gentdum_007a.2000 = dhd_rve_gentdumc_007a.2000,
-         fm50_gentdum_007a.2000 = fm50_gentdum_007a)
+         fm50_gentdum_007a.2000 = fm50_gentdum_007a) %>%
+  mutate(rve_msa_gentdum_007a.2000 = ifelse(rve_msa_abledum == 0, NA,
+                                       rve_msa_gentdum_007a.2000))
 
 names(gentdat10)
 rm(gentdat10_msa)
