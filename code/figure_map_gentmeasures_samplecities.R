@@ -44,7 +44,7 @@ library('sf')
 library('ggplot2')
 library('gridExtra')
 library('tidyr')
-
+library('magrittr')
 
 # Set working directory: 
 homedir <- paste0(dirname(rstudioapi::getSourceEditorContext()$path))
@@ -65,7 +65,7 @@ names(gentdat10_msa)
 
 gentdat10 %<>%
   left_join(gentdat10_msa %>% select(trtid10, dhd_abledum50m_00, fm50_gentdum_007a, dhd_rve_gentdumm_007a)) %>%
-  select(trtid10, metdiv, placefp, ccflag, dhd_abledum50m_00, dhd_rve_gentdumc_007a.2000, fm50_gentdum_007a, dhd_rve_gentdumm_007a) %>%
+  select(trtid10, metdiv, placefp, ccflag, dhd_abledum50m_00, dhd_rve_gentdumc_007a.2000, fm50_gentdum_007a, dhd_rve_gentdumm_007a, ocseschange_007a.2000, tjseschange007a.2000) %>%
   rename(rve_msa_abledum = dhd_abledum50m_00,
          rve_msa_gentdum_007a.2000 = dhd_rve_gentdumm_007a,
          rve_city_gentdum_007a.2000 = dhd_rve_gentdumc_007a.2000,
@@ -94,13 +94,17 @@ register_google("AIzaSyCO-hk4AjUgTdMKDuv18f66py8NIdrf4qU")
 # vectors for gent measures and years 
 measures <- c("rve_city_gentdum_007a.2000", "fm50_gentdum_007a.2000")
 measures_names <- c("HW City Gentrification Measure", "FM Gentrification Measure")
+measures_c <- c("ocseschange_007a.2000", "tjseschange007a.2000")
+measures_c_names <- c("OW Gentrification Measure", "TJ Gentrification Measure")
 measures_rve <- c("rve_msa_gentdum_007a.2000")
 measures_rve_names <- c("")
 gentyears <- c("2000")
 gentyears_names <- c("2000-2015")
+
 measures_all <- c(measures, measures_rve)
 measures_all_names <- c(measures_names, measures_rve_names)
 names(measures_all_names) <- measures_all
+names(measures_c_names) <- measures_c
 
 # vector for gent categories
 cats <- c("citygent", "citynogent", "citynongent")
@@ -132,6 +136,25 @@ gentdat <-
   mutate(msa_name = case_when(metdiv == 19804 ~ "Detroit-Livonia-Dearborn, MI", 
                          metdiv == 37964 ~ "Philadelphia, PA",
                          metdiv == 41884 ~ "San Francisco-San Mateo-Redwood City, CA"))
+
+gentdat %<>%
+  mutate(tjseschange007a.2000 = 
+           case_when(tjseschange007a.2000 < -2 ~ "-4 to -2",
+                     tjseschange007a.2000 < 0 ~ "-2 to 0",
+                     tjseschange007a.2000 == 0 ~ "0",
+                     tjseschange007a.2000 < 2 ~ "0 to 2",
+                     tjseschange007a.2000 <= 4 ~ "2 to 4",
+                     TRUE ~ NA_character_),
+         ocseschange_007a.2000 = 
+           case_when(
+             ocseschange_007a.2000 < -50 ~ "-100 to -50",
+             ocseschange_007a.2000 < 0 ~ "-50 to 0",
+             ocseschange_007a.2000 == 0 ~ "0",
+             ocseschange_007a.2000 < 50 ~ "0 to 50",
+             ocseschange_007a.2000 <= 100 ~ "50 to 100",
+             TRUE ~ NA_character_
+           )
+)
 
 # create list with each city's data
 gentdat_city <-
@@ -208,7 +231,7 @@ plot_dat = all_map_dat %>%
             by = c("GEOID10S" = "trtid10"))
 plot_dat <- st_transform(plot_dat, CRS("+proj=longlat +datum=WGS84"))
 
-## Create maps ----
+## Create maps for cat. measures ----
 maps <- list()
 
 # Maps
@@ -248,7 +271,7 @@ for (measure in measures_all) {
   }
 }
 
-# HW / FW Maps
+# HW / FW Maps ----
 plotlist <- list(maps[["rve_city_gentdum_007a.2000_Detroit-Livonia-Dearborn, MI"]],
                  maps[["fm50_gentdum_007a.2000_Detroit-Livonia-Dearborn, MI"]],
                  maps[["rve_city_gentdum_007a.2000_Philadelphia, PA"]],
@@ -268,7 +291,7 @@ ggsave(filename = "figures/maps_hw_fm_samplecities_2000_2017_v2.png",
        plot = hw_fm_panel, 
        width = 15, height = 15, dpi = 300)
 
-# RVE Maps
+# RVE Maps ----
 plotlist <- list(maps[["rve_msa_gentdum_007a.2000_Detroit-Livonia-Dearborn, MI"]],
                  maps[["rve_msa_gentdum_007a.2000_Philadelphia, PA"]],
                  maps[["rve_msa_gentdum_007a.2000_San Francisco-San Mateo-Redwood City, CA"]])
@@ -284,199 +307,63 @@ ggsave(filename = "figures/maps_rve_samplecities_2000_2017_v2.png",
        plot = rve_panel, 
        width = 15, height = 5, dpi = 300)
 
-# # write a loop to produce maps: 
-# # for each city
-# # for each period
-# # for each measure 
-# plots_out <- 
-# foreach (
-#   i = 1:length(cities)
-# ) %do% {
-#   # create fortified data for each measure (except dhd) for each year
-#   foreach(
-#     k = 1:length(gentyears)
-#   ) %do% {
-#       foreach(
-#         j = c(1:length(measures))  
-#       ) %do% {
-#         # id measure and year
-#           col <- gentdat_city[[i]] %>% select(which(
-#             grepl(paste0(measures[j], "_gentdum"), names(alldat)) & 
-#               grepl(paste0(".", gentyears[k]), names(alldat))))
-#         # fortify data with this measure and year to assign categories for mapping
-#         dat_out <-
-#           foreach(l = c(0, 1),
-#                   .combine = rbind.data.frame) %do% {
-#                     out <-
-#                       fortify(subset(plots[[i]],
-#                                      plots[[i]]$GEOID10S %in%
-#                                        gentdat_city[[i]]$trtid10[
-#                                          which(col == l)]))
-#                     if (nrow(out) != 0) {
-#                       out$cat <- as.character(l)}
-#                     return(out)
-#                   }
-#         # add NA (nongentrifiable) to dataset
-#         out <-
-#           fortify(subset(plots[[i]],
-#                          plots[[i]]$GEOID10S %in%
-#                            gentdat_city[[i]]$trtid10[
-#                              which(is.na(col))]))
-#         if (nrow(out) != 0) {
-#           out$cat <- "nongent"}
-#         dat_out <- rbind.data.frame(dat_out, out)
-#         # create map 
-#         map_out <- 
-#           gmaps[[i]] + 
-#           geom_polygon(
-#             aes(x=long, y=lat, group=group),
-#             fill = NA,
-#             size = .2,
-#             color = 'black',
-#             data = plots[[i]],
-#             alpha = 1) +
-#           geom_polygon(
-#             aes(x = long, y = lat, group = group, fill = cat), 
-#             data = dat_out, 
-#             size = .2,
-#             alpha = .5) + 
-#           ggtitle(paste0(cities_names[i], "\n", measures_names[j], ", ", 
-#                          gentyears_names[k])) + 
-#           theme(plot.title = element_text(hjust = .5, size = 8), 
-#                 axis.title.x = element_blank(), 
-#                 axis.title.y = element_blank(), 
-#                 axis.text.x = element_blank(), 
-#                 axis.text.y = element_blank(), 
-#                 axis.ticks.x = element_blank(), 
-#                 axis.ticks.y = element_blank(), 
-#                 legend.title = element_blank(), 
-#                 legend.position = "bottom", 
-#                 legend.text = element_text(size = 6),
-#                 legend.key.size = unit(0.2, "cm")) + 
-#           scale_fill_manual(
-#             breaks = c(0, 1, "nongent"), 
-#             values = c("pink", "red",  
-#                        "white"),
-#             labels = c("Nongentrifying", "Gentrifying", 
-#                        "Nongentrifiable"), 
-#             guide = "legend")
-#         return(map_out)
-#       }
-#   }
-# }
-# # export maps
-# maps_out <- 
-#   arrangeGrob(
-#     plots_out[[1]][[1]][[1]], 
-#     plots_out[[1]][[1]][[2]],
-#     plots_out[[2]][[1]][[1]], 
-#     plots_out[[2]][[1]][[2]], 
-#     plots_out[[3]][[1]][[1]], 
-#     plots_out[[3]][[1]][[2]], 
-#     nrow = 3
-#   )
-# filename <- "maps_hw_fm_samplecities_2000_2017.pdf"
-# ggsave(filename, plot = maps_out, width = 15, height = 15, dpi = 300)
-# 
-# # RVE_msa only maps ----
-# # plot RVE gent measures for each city by decade
-# # write script that results in 1x3 panel
-# # for each decade for each city
-# 
-# # set directory
-# setwd(paste0(homedir, "/.."))
-# 
-# alldat <- gentdat
-# 
-# # write a loop to produce maps: 
-# # for each city
-# # for each period
-# # for each measure 
-# plots_out <- 
-#   foreach (
-#     i = 1:length(cities)
-#   ) %do% {
-#     # create fortified data for each measure (except dhd) for each year
-#     foreach(
-#       k = 1:length(gentyears)
-#     ) %do% {
-#       foreach(
-#         j = c(1:length(measures_rve))  
-#       ) %do% {
-#         # id measure and year
-#         col <- gentdat_city[[i]] %>% select(which(
-#           grepl(paste0(measures_rve[j]), names(alldat)) & 
-#             grepl(paste0(".", gentyears[k]), names(alldat))))
-#         # fortify data with this measure and year to assign categories for mapping
-#         dat_out <-
-#           foreach(l = c(0, 1),
-#                   .combine = rbind.data.frame) %do% {
-#                     out <-
-#                       fortify(subset(dat_sp_city[[i]],
-#                                      dat_sp_city[[i]]$GEOID10S %in%
-#                                        gentdat_city[[i]]$trtid10[
-#                                          which(col == l)]))
-#                     if (nrow(out) != 0) {
-#                       out$cat <- as.character(l)}
-#                     return(out)
-#                   }
-#         # add NA (nongentrifiable) to dataset
-#         out <-
-#           fortify(subset(dat_sp_city[[i]],
-#                          dat_sp_city[[i]]$GEOID10S %in%
-#                            gentdat_city[[i]]$trtid10[
-#                              which(is.na(col))]))
-#         if (nrow(out) != 0) {
-#           out$cat <- "nongent"}
-#         dat_out <- rbind.data.frame(dat_out, out)
-#         # create map 
-#         map_out <- 
-#           gmaps[[i]] + 
-#           geom_polygon(
-#             aes(x=long, y=lat, group=group),
-#             fill = NA,
-#             size = .2,
-#             color = 'black',
-#             data = plots[[i]],
-#             alpha = 1) +
-#           geom_polygon(
-#             aes(x = long, y = lat, group = group, fill = cat), 
-#             data = dat_out, 
-#             size = .2,
-#             alpha = .5) + 
-#           ggtitle(paste0(cities_names[i], ", ", 
-#                          gentyears_names[k])) + 
-#           theme(plot.title = element_text(hjust = .5, size = 8), 
-#                 axis.title.x = element_blank(), 
-#                 axis.title.y = element_blank(), 
-#                 axis.text.x = element_blank(), 
-#                 axis.text.y = element_blank(), 
-#                 axis.ticks.x = element_blank(), 
-#                 axis.ticks.y = element_blank(), 
-#                 legend.title = element_blank(), 
-#                 legend.position = "bottom", 
-#                 legend.text = element_text(size = 6),
-#                 legend.key.size = unit(0.2, "cm")) + 
-#           scale_fill_manual(
-#             breaks = c(0, 1, "nongent"), 
-#             values = c("pink", "red",  
-#                        "white"),
-#             labels = c("Nongentrifying", "Gentrifying", 
-#                        "Nongentrifiable"), 
-#             guide = "legend")
-#         return(map_out)
-#       }
-#     }
-#   }
-# # export maps
-# maps_out <- 
-#   arrangeGrob(
-#     plots_out[[1]][[1]][[1]], 
-#     plots_out[[2]][[1]][[1]], 
-#     plots_out[[3]][[1]][[1]], 
-#     nrow = 1
-#   )
-# filename <- "maps_rve_samplecities_2000_2017.pdf"
-# ggsave(filename, plot = maps_out, width = 15, height = 5, dpi = 300)
-# 
-# rm(list = ls())
+# OW/TJ continuous measures ----
+maps <- list()
+
+# Maps
+for (measure in measures_c) {
+  for (msa in msa_names) {
+    mapname <- paste0(measure, "_", msa)
+    # create map
+    if (measure == "ocseschange_007a.2000") {
+      custom_breaks = c("-100 to -50", "-50 to 0", "0", "0 to 50", "50 to 100")
+    } else {
+      custom_breaks = c("-4 to -2", "-2 to 0", "0", "0 to 2", "2 to 4")
+    }
+    map <-
+      gmaps[[msa]] +
+      geom_sf(
+        data = plot_dat %>% filter(msa_name == msa) %>% rename("var" = measure),
+        aes(fill = var),    
+        alpha = .9,
+        size = 0.1,
+        color = 'grey45',
+        inherit.aes = F) +
+      ggtitle(paste0(msa, "\n", measures_c_names[[measure]], ", ", gentyears_names)) + 
+      theme(plot.title = element_text(hjust = .5, size = 8),
+            axis.title.x = element_blank(),
+            axis.title.y = element_blank(),
+            axis.text.x = element_blank(),
+            axis.text.y = element_blank(),
+            axis.ticks.x = element_blank(),
+            axis.ticks.y = element_blank(),
+            legend.title = element_blank(),
+            legend.position = "bottom",
+            legend.text = element_text(size = 6),
+            legend.key.size = unit(0.2, "cm")) +
+      scale_fill_manual(
+        breaks = custom_breaks,
+        values = c("purple", "lavender", "grey", "lightgreen", "darkgreen"),
+        guide = "legend", 
+        na.value = "white")
+    maps[[mapname]] <- map
+  }
+}
+
+plotlist <- list(maps[["ocseschange_007a.2000_Detroit-Livonia-Dearborn, MI"]],
+                 maps[["tjseschange007a.2000_Detroit-Livonia-Dearborn, MI"]],
+                 maps[["ocseschange_007a.2000_Philadelphia, PA"]],
+                 maps[["tjseschange007a.2000_Philadelphia, PA"]],
+                 maps[["ocseschange_007a.2000_San Francisco-San Mateo-Redwood City, CA"]],
+                 maps[["tjseschange007a.2000_San Francisco-San Mateo-Redwood City, CA"]])
+
+oc_tj_panel <- ggpubr::ggarrange(
+  plotlist = plotlist,
+  common.legend = F,
+  ncol = 2,
+  nrow = 3
+)
+
+ggsave(filename = "figures/maps_oc_tj_samplecities_2000_2017.png", 
+       plot = oc_tj_panel, 
+       width = 15, height = 15, dpi = 300)
