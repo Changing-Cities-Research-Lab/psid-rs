@@ -137,24 +137,24 @@ gentdat <-
                          metdiv == 37964 ~ "Philadelphia, PA",
                          metdiv == 41884 ~ "San Francisco-San Mateo-Redwood City, CA"))
 
-gentdat %<>%
-  mutate(tjseschange007a.2000 = 
-           case_when(tjseschange007a.2000 < -2 ~ "-4 to -2",
-                     tjseschange007a.2000 < 0 ~ "-2 to 0",
-                     tjseschange007a.2000 == 0 ~ "0",
-                     tjseschange007a.2000 < 2 ~ "0 to 2",
-                     tjseschange007a.2000 <= 4 ~ "2 to 4",
-                     TRUE ~ NA_character_),
-         ocseschange_007a.2000 = 
-           case_when(
-             ocseschange_007a.2000 < -50 ~ "-100 to -50",
-             ocseschange_007a.2000 < 0 ~ "-50 to 0",
-             ocseschange_007a.2000 == 0 ~ "0",
-             ocseschange_007a.2000 < 50 ~ "0 to 50",
-             ocseschange_007a.2000 <= 100 ~ "50 to 100",
-             TRUE ~ NA_character_
-           )
-)
+# gentdat %<>%
+#   mutate(tjseschange007a.2000 = 
+#            case_when(tjseschange007a.2000 < -2 ~ "-4 to -2",
+#                      tjseschange007a.2000 < 0 ~ "-2 to 0",
+#                      tjseschange007a.2000 == 0 ~ "0",
+#                      tjseschange007a.2000 < 2 ~ "0 to 2",
+#                      tjseschange007a.2000 <= 4 ~ "2 to 4",
+#                      TRUE ~ NA_character_),
+#          ocseschange_007a.2000 = 
+#            case_when(
+#              ocseschange_007a.2000 < -50 ~ "-100 to -50",
+#              ocseschange_007a.2000 < 0 ~ "-50 to 0",
+#              ocseschange_007a.2000 == 0 ~ "0",
+#              ocseschange_007a.2000 < 50 ~ "0 to 50",
+#              ocseschange_007a.2000 <= 100 ~ "50 to 100",
+#              TRUE ~ NA_character_
+#            )
+# )
 
 # create list with each city's data
 gentdat_city <-
@@ -316,9 +316,11 @@ for (measure in measures_c) {
     mapname <- paste0(measure, "_", msa)
     # create map
     if (measure == "ocseschange_007a.2000") {
-      custom_breaks = c("-100 to -50", "-50 to 0", "0", "0 to 50", "50 to 100")
+      custom_breaks = c(-69, -30, -20, -10, 0, 10, 20, 30, 84)
+      custom_limits = c(-69, 84)
     } else {
-      custom_breaks = c("-4 to -2", "-2 to 0", "0", "0 to 2", "2 to 4")
+      custom_breaks = c(-3, -2, -1, 0, 1, 2, 3, 4)
+      custom_limits = c(-3, 4)
     }
     map <-
       gmaps[[msa]] +
@@ -341,10 +343,11 @@ for (measure in measures_c) {
             legend.position = "bottom",
             legend.text = element_text(size = 6),
             legend.key.size = unit(0.2, "cm")) +
-      scale_fill_manual(
-        breaks = custom_breaks,
-        values = c("purple", "lavender", "grey", "lightgreen", "darkgreen"),
-        guide = "legend", 
+      scale_fill_viridis_c(
+        #breaks = custom_breaks,
+        option = "H",
+        limits = custom_limits,
+        guide = "colorbar", 
         na.value = "white")
     maps[[mapname]] <- map
   }
@@ -364,6 +367,6 @@ oc_tj_panel <- ggpubr::ggarrange(
   nrow = 3
 )
 
-ggsave(filename = "figures/maps_oc_tj_samplecities_2000_2017.png", 
+ggsave(filename = "figures/maps_oc_tj_samplecities_2000_2017_cont.png",
        plot = oc_tj_panel, 
        width = 15, height = 15, dpi = 300)
